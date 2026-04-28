@@ -192,13 +192,18 @@
         {enableHighAccuracy:true, timeout:10000}
       );
       navigator.geolocation.watchPosition(
-        pos => { gpsPos={lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy}; gpsErr=null; gpsLoading=false; render(); },
+        pos => {
+          gpsPos={lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy};
+          gpsErr=null; gpsLoading=false;
+          const ge=document.getElementById('gps-status');
+          if(ge) ge.innerHTML=`<div class="text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg text-sm font-mono">${gpsPos.lat.toFixed(5)}, ${gpsPos.lng.toFixed(5)} <span class="text-xs text-emerald-500 ml-1">±${Math.round(gpsPos.accuracy)}m</span></div>`;
+        },
         () => {}, {enableHighAccuracy:true, timeout:10000, maximumAge:5000}
       );
     }
 
     // ==================== CLOCK ====================
-    setInterval(() => { now=new Date(); const el=document.getElementById('clock'); if(el) el.textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}); }, 1000);
+    setInterval(() => { const el=document.getElementById('clock'); if(el) { now=new Date(); el.textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}); } }, 1000);
 
     // ==================== RENDER ====================
     function render() {
