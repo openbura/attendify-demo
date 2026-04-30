@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0e7490">
+  <title>SiteCheck</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;user-select:none;background:#0f172a}
+    *{touch-action:manipulation}
+    .fade{animation:fadeIn .3s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    input[type=text],input[type=password]{font-size:16px!important}
+    .hidden{display:none!important}
+    .bg-const{background-image:linear-gradient(135deg,rgba(15,23,42,0.92)0%,rgba(14,116,144,0.85)50%,rgba(15,23,42,0.92)100%),
+      url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1920&q=60');
+      background-size:cover;background-position:center;background-attachment:fixed}
+    .bg-card{background:rgba(255,255,255,0.06);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.1)}
+    .bg-w{background:rgba(249,250,251,0.95);backdrop-filter:blur(8px)}
+    .glow{box-shadow:0 0 40px rgba(6,182,212,0.15)}
+  </style>
+  <script>
+    tailwind.config={theme:{extend:{colors:{primary:{50:'#ecfeff',100:'#cffafe',500:'#06b6d4',600:'#0891b2',700:'#0e7490'}}}}}
+  </script>
+</head>
+<body class="min-h-screen">
+  <div id="app"></div>
+  <script>
+  // ==================== TRANSLATIONS ====================
+  var L={
+    en:{appName:"SiteCheck",sub:"Worker Attendance System",loginTitle:"Welcome Back",password:"Password",
+      invalidPass:"Invalid password",signIn:"Sign In",adminDashboard:"Admin Dashboard",
+      checkIn:"CHECK IN",checkOut:"CHECK OUT",checkedIn:"Checked In",site:"Assigned Site",logout:"Logout",
+      liveWorkers:"Live Workers",allAttendance:"Attendance Report",
+      totalWorkers:"Total Workers",onSite:"On Site",activeSites:"Active Sites",todayRec:"Today's Records",
+      allSites:"All Sites",worker:"Worker",inTime:"Check In",outTime:"Check Out",duration:"Duration",status:"Status",
+      noData:"No records yet",checkedOut:"Checked Out",currentClock:"Current Time",
+      profile:"Profile",managerName:"Manager",empReport:"Employee Hours Report",adminProfile:"Admin Profile",
+      adminSite:"Admin Panel",name:"Name",role:"Role",emp:"Employee Summary",
+      totalHrs:"Total Hours",avgHrs:"Avg/Day",lastSeen:"Last Seen",
+      allClear:"All workers checked out",someOnSite:"Workers on site"},
+    zh:{appName:"SiteCheck",sub:"工人考勤系统",loginTitle:"欢迎回来",password:"密码",
+      invalidPass:"密码错误",signIn:"登录",adminDashboard:"管理员面板",
+      checkIn:"签到",checkOut:"签退",checkedIn:"已签到",site:"分配工地",logout:"退出",
+      liveWorkers:"在线工人",allAttendance:"考勤报告",
+      totalWorkers:"总人数",onSite:"在岗",activeSites:"活跃工地",todayRec:"今日记录",
+      allSites:"全部",worker:"工人",inTime:"签到",outTime:"签退",duration:"时长",status:"状态",
+      noData:"暂无记录",checkedOut:"已签退",currentClock:"当前时间",
+      profile:"个人资料",managerName:"管理员",empReport:"员工工时报告",adminProfile:"管理员资料",
+      adminSite:"管理面板",name:"姓名",role:"角色",emp:"员工汇总",
+      totalHrs:"总工时",avgHrs:"日均工时",lastSeen:"最后上线",
+      allClear:"所有工人已签退",someOnSite:"工人在岗"},
+    th:{appName:"SiteCheck",sub:"ระบบลงเวลาคนงาน",loginTitle:"ยินดีต้อนรับ",password:"รหัสผ่าน",
+      invalidPass:"รหัสผ่านไม่ถูกต้อง",signIn:"เข้าสู่ระบบ",adminDashboard:"แผงควบคุม",
+      checkIn:"ลงเวลาเข้า",checkOut:"ลงเวลาออก",checkedIn:"เข้างานแล้ว",site:"ไซต์งาน",logout:"ออก",
+      liveWorkers:"คนงานออนไลน์",allAttendance:"รายงานการลงเวลา",
+      totalWorkers:"คนงานทั้งหมด",onSite:"อยู่ในไซต์",activeSites:"ไซต์ที่ใช้งาน",todayRec:"บันทึกวันนี้",
+      allSites:"ทั้งหมด",worker:"คนงาน",inTime:"เข้า",outTime:"ออก",duration:"ระยะเวลา",status:"สถานะ",
+      noData:"ยังไม่มีบันทึก",checkedOut:"ออกงานแล้ว",currentClock:"เวลาปัจจุบัน",
+      profile:"โปรไฟล์",managerName:"ผู้จัดการ",empReport:"รายงานชั่วโมงพนักงาน",adminProfile:"โปรไฟล์ผู้ดูแล",
+      adminSite:"แผงควบคุม",name:"ชื่อ",role:"บทบาท",emp:"สรุปพนักงาน",
+      totalHrs:"ชั่วโมงรวม",avgHrs:"เฉลี่ยต่อวัน",lastSeen:"เห็นล่าสุด",
+      allClear:"คนงานออกหมดแล้ว",someOnSite:"คนงานอยู่ในไซต์"},
+    hi:{appName:"SiteCheck",sub:"कर्मचारी उपस्थिति",loginTitle:"स्वागत",password:"पासवर्ड",
+      invalidPass:"गलत पासवर्ड",signIn:"लॉगिन",adminDashboard:"एडमिन डैशबोर्ड",
+      checkIn:"चेक इन",checkOut:"चेक आउट",checkedIn:"चेक इन",site:"साइट",logout:"लॉगआउट",
+      liveWorkers:"लाइव कर्मचारी",allAttendance:"उपस्थिति रिपोर्ट",
+      totalWorkers:"कुल कर्मच",onSite:"साइट पर",activeSites:"सक्रिय साइट",todayRec:"आज के रिकॉर्ड",
+      allSites:"सभी",worker:"कर्मचारी",inTime:"चेक इन",outTime:"चेक आउट",duration:"अवधि",status:"स्थिति",
+      noData:"कोई रिकॉर्ड नहीं",checkedOut:"चेक आउट",currentClock:"समय",
+      profile:"प्रोफ़ाइल",managerName:"प्रबंधक",empReport:"कर्मचारी घंटा रिपोर्ट",adminProfile:"एडमिन प्रोफ़ाइल",
+      adminSite:"एडमिन पैनल",name:"नाम",role:"भूमिका",emp:"कर्मचारी सारांश",
+      totalHrs:"कुल घंटे",avgHrs:"औसत/दिन",lastSeen:"आखिरी बार देखा",
+      allClear:"सभी चेक आउट",someOnSite:"कर्मचारी साइट पर"},
+    ru:{appName:"SiteCheck",sub:"Система учёта",loginTitle:"Добро пожаловать",password:"Пароль",
+      invalidPass:"Неверный пароль",signIn:"Войти",adminDashboard:"Панель администратора",
+      checkIn:"РЕГИСТРАЦИЯ",checkOut:"ВЫХОД",checkedIn:"На месте",site:"Площадка",logout:"Выход",
+      liveWorkers:"На площадке",allAttendance:"Отчёт по посещаемости",
+      totalWorkers:"Всего",onSite:"На месте",activeSites:"Активных площадок",todayRec:"Сегодня",
+      allSites:"Все",worker:"Работник",inTime:"Вход",outTime:"Выход",duration:"Время",status:"Статус",
+      noData:"Нет записей",checkedOut:"Вышел",currentClock:"Время",
+      profile:"Профиль",managerName:"Менеджер",empReport:"Отчёт по часам",adminProfile:"Профиль админа",
+      adminSite:"Панель управления",name:"Имя",role:"Роль",emp:"Сводка",
+      totalHrs:"Всего часов",avgHrs:"Сред/день",lastSeen:"Последний раз",
+      allClear:"Все вышли",someOnSite:"Работники на месте"}
+  };
+
+  var lang=localStorage.getItem('sc_l5')||'en';
+  function t(k){return(L[lang]&&L[lang][k])||L.en[k]||k}
+
+  // ==================== DATA ====================
+  var WORKERS=[
+    {id:'w1',name:'Weiming Zhang',passport:'C12345678',site:'Ramat Gan Tower',avatar:'👷'},
+    {id:'w2',name:'Somchai Patel',passport:'T98765432',site:'Tel Aviv Center',avatar:'🧑‍'},
+    {id:'w3',name:'Raj Kumar',passport:'I55667788',site:'Ramat Gan Tower',avatar:'🔧'}
+  ];
+  var PASS='1';
+  var ADMIN_PASS='1';
+  var SITES=['Ramat Gan Tower','Tel Aviv Center'];
+
+  var ss=localStorage.getItem('sc_s5');
+  var session=ss?JSON.parse(ss):null;
+
+  var SK='sc_r5';
+  var recs=JSON.parse(localStorage.getItem(SK)||'[]');
+  if(!recs.length){
+    var td=new Date().toISOString().split('T')[0];
+    recs.push({id:'r1',wid:'w1',wn:'Weiming Zhang',site:'Ramat Gan Tower',date:td,ci:new Date(Date.now()-6*36e5).toISOString(),co:null,lat:32.0809,lng:34.8067});
+    recs.push({id:'r2',wid:'w3',wn:'Raj Kumar',site:'Ramat Gan Tower',date:td,ci:new Date(Date.now()-5*36e5).toISOString(),co:null,lat:32.0814,lng:34.8070});
+    recs.push({id:'r3',wid:'w2',wn:'Somchai Patel',site:'Tel Aviv Center',date:td,ci:new Date(Date.now()-4*36e5).toISOString(),co:new Date(Date.now()-1.5*36e5).toISOString(),lat:32.0668,lng:34.7753});
+    for(var dd=1;dd<=3;dd++){
+      var pr=new Date(Date.now()-dd*864e5).toISOString().split('T')[0];
+      recs.push({id:'p'+dd+'a',wid:'w1',wn:'Weiming Zhang',site:'Ramat Gan Tower',date:pr,ci:pr+'T06:30:00',co:pr+'T16:00:00',lat:32.0809,lng:34.8067});
+      recs.push({id:'p'+dd+'b',wid:'w2',wn:'Somchai Patel',site:'Tel Aviv Center',date:pr,ci:pr+'T07:00:00',co:pr+'T17:00:00',lat:32.0668,lng:34.7753});
+      recs.push({id:'p'+dd+'c',wid:'w3',wn:'Raj Kumar',site:'Ramat Gan Tower',date:pr,ci:pr+'T06:15:00',co:pr+'T14:45:00',lat:32.0809,lng:34.8067});
+    }
+    localStorage.setItem(SK,JSON.stringify(recs));
+  }
+
+  function fmtT(iso){if(!iso)return'-';try{return new Date(iso).toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',hour12:false})}catch(e){return'-'}}
+  function fmtD(s){try{return new Date(s+'T00:00:00').toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'})}catch(e){return s}}
+  function dur(a,b){if(!a||!b)return'-';try{var ms=new Date(b)-new Date(a);return Math.floor(ms/36e5)+'h '+Math.floor((ms%36e5)/6e4)+'m'}catch(e){return'-'}}
+  function ci(wid){var d=new Date().toISOString().split('T')[0];for(var i=0;i<recs.length;i++){if(recs[i].wid===wid&&recs[i].date===d&&!recs[i].co)return true}return false}
+
+  // ==================== ACTIONS ====================
+  window.doLogin=function(){
+    var pw=document.getElementById('sc-pw').value;
+    var e=document.getElementById('sc-err');
+    e.className='hidden';
+    if(pw===ADMIN_PASS){
+      session={type:'admin'};
+      localStorage.setItem('sc_s5',JSON.stringify(session));
+      render();return;
+    }
+    for(var i=0;i<WORKERS.length;i++){
+      if(WORKERS[i].passport===pw){
+        session={type:'worker',wid:WORKERS[i].id};
+        localStorage.setItem('sc_s5',JSON.stringify(session));
+        render();return;
+      }
+    }
+    e.textContent=t('invalidPass');
+    e.className='';
+  };
+
+  window.doCI=function(wid){
+    var w=null;for(var i=0;i<WORKERS.length;i++){if(WORKERS[i].id===wid){w=WORKERS[i];break}}
+    if(!w)return;
+    var d=new Date().toISOString().split('T')[0];
+    var f=[];
+    for(var i=0;i<recs.length;i++){if(!(recs[i].wid===w.id&&recs[i].date===d&&!recs[i].co))f.push(recs[i])}
+    f.push({id:'r'+Date.now(),wid:w.id,wn:w.name,site:w.site,date:d,ci:new Date().toISOString(),co:null,lat:32.0809,lng:34.8067});
+    recs=f;localStorage.setItem(SK,JSON.stringify(recs));render();
+  };
+
+  window.doCO=function(wid){
+    var now=new Date().toISOString();
+    for(var i=0;i<recs.length;i++){if(recs[i].wid===wid&&!recs[i].co)recs[i].co=now}
+    localStorage.setItem(SK,JSON.stringify(recs));render();
+  };
+
+  window.doLogout=function(){session=null;localStorage.removeItem('sc_s5');render()};
+  window.doTab=function(v){tab=v;render()};
+  window.doFilter=function(v){sf=v;render()};
+
+  // ==================== RENDER ====================
+  var clockTimer=null,tab='live',sf='all';
+
+  function render(){
+    var app=document.getElementById('app');
+    if(clockTimer){clearInterval(clockTimer);clockTimer=null}
+    if(!session||!session.type)renderLogin(app);
+    else if(session.type==='worker')renderWorker(app);
+    else renderAdmin(app);
+  }
+
+  function langSelect(id){
+    var h='<select id="'+id+'" style="padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.15);color:white;font-size:12px;border:1px solid rgba(255,255,255,0.25);cursor:pointer">';
+    var c=['en','zh','th','hi','ru'],f=['🇬','🇨🇳','🇹🇭','🇮🇳','🇷🇺'];
+    for(var i=0;i<5;i++)h+='<option value="'+c[i]+'"'+(lang===c[i]?' selected':'')+'>'+f[i]+' '+L[c[i]].signIn+'</option>';
+    h+='</select>';return h;
+  }
+
+  function bindLang(id){
+    var ls=document.getElementById(id);
+    if(ls)ls.addEventListener('change',function(){lang=this.value;localStorage.setItem('sc_l5',lang);render()});
+  }
+
+  // ===== LOGIN =====
+  function renderLogin(app){
+    var h='';
+    h+='<div class="bg-const min-h-screen flex flex-col items-center justify-center p-4 fade">';
+    h+='  <div class="absolute top-4 left-4">'+langSelect('sc-l1')+'</div>';
+    h+='  <div class="text-center mb-8">';
+    h+='    <div style="font-size:72px;margin-bottom:16px">🏗️</div>';
+    h+='    <h1 style="font-size:32px;font-weight:bold;color:white;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,0.3)">'+t('appName')+'</h1>';
+    h+='    <p style="color:#a5f3fc;font-size:16px">'+t('sub')+'</p>';
+    h+='  </div>';
+    h+='  <div class="bg-card rounded-2xl p-8 w-full max-w-sm glow">';
+    h+='    <h2 style="font-size:20px;font-weight:600;color:white;margin-bottom:24px;text-align:center">'+t('loginTitle')+'</h2>';
+    h+='    <div style="display:flex;flex-direction:column;gap:16px">';
+    h+='      <div>';
+    h+='        <label style="display:block;font-size:14px;font-weight:500;color:#94a3b8;margin-bottom:6px">'+t('password')+'</label>';
+    h+='        <input id="sc-pw" type="password" placeholder="Enter password or passport ID" style="width:100%;padding:14px 16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;font-size:16px;color:white;outline:none;box-sizing:border-box">';
+    h+='      </div>';
+    h+='      <div id="sc-err" class="hidden" style="color:#fca5a5;font-size:14px;background:rgba(239,68,68,0.15);padding:10px 14px;border-radius:10px;text-align:center;border:1px solid rgba(239,68,68,0.3)">'+t('invalidPass')+'</div>';
+    h+='      <button onclick="doLogin()" style="width:100%;padding:14px;background:linear-gradient(135deg,#0891b2,#0e7490);color:white;border-radius:12px;font-weight:600;font-size:16px;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(6,182,212,0.3)">'+t('signIn')+'</button>';
+    h+='    </div>';
+    h+='    <div style="margin-top:20px;padding:16px;background:rgba(255,255,255,0.05);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">';
+    h+='      <p style="font-size:12px;color:#94a3b8;text-align:center">🔑 <strong>Worker:</strong> Passport ID (demo: T98765432) &nbsp;|&nbsp; <strong>Admin:</strong> 1</p>';
+    h+='    </div>';
+    h+='  </div>';
+    h+='</div>';
+    app.innerHTML=h;
+    bindLang('sc-l1');
+    var pw=document.getElementById('sc-pw');
+    if(pw)pw.addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
+  }
+
+  // ===== WORKER =====
+  function renderWorker(app){
+    var w=null;for(var i=0;i<WORKERS.length;i++){if(WORKERS[i].id===session.wid){w=WORKERS[i];break}}
+    if(!w){doLogout();return}
+    var ck=ci(w.id);
+    var hist=[];for(var i=0;i<recs.length;i++){if(recs[i].wid===w.id)hist.push(recs[i])}
+    hist.sort(function(a,b){return b.date.localeCompare(a.date)});
+
+    var histH='';
+    for(var h=0;h<Math.min(hist.length,10);h++){
+      var r=hist[h];
+      histH+='<div class="bg-w rounded-xl p-3 mb-2" style="box-shadow:0 1px 3px rgba(0,0,0,0.08)">';
+      histH+='<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#6b7280;margin-bottom:4px">';
+      histH+='<span>📅 '+fmtD(r.date)+'</span><span style="font-size:11px;background:#f3f4f6;padding:2px 8px;border-radius:999px">'+r.site+'</span></div>';
+      histH+='<div style="display:flex;align-items:center;gap:12px;font-size:14px">';
+      histH+='<span style="color:#374151">🕐 <strong>'+fmtT(r.ci)+'</strong></span>';
+      if(r.co)histH+='<span style="color:#6b7280">→ '+fmtT(r.co)+' ('+dur(r.ci,r.co)+')</span>';
+      else histH+='<span style="color:#16a34a;font-weight:600;font-size:11px;background:#dcfce7;padding:2px 8px;border-radius:999px">🟢 '+t('checkedIn')+'</span>';
+      histH+='</div></div>';
+    }
+
+    var html='';
+    html+='<div class="bg-const min-h-screen fade">';
+    html+='  <header style="background:rgba(14,116,144,0.9);backdrop-filter:blur(10px);color:white;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.2)">';
+    html+='    <div style="display:flex;align-items:center;justify-content:space-between">';
+    html+='      <div>';
+    html+='        <div style="font-size:20px;font-weight:bold">🏗️ '+t('appName')+'</div>';
+    html+='        <div style="font-size:14px;opacity:0.85">'+w.avatar+' '+w.name+'</div>';
+    html+='      </div>';
+    html+='      <div style="display:flex;gap:8px;align-items:center">';
+    html+=langSelect('sc-l2');
+    html+='        <button onclick="doLogout()" style="background:rgba(255,255,255,0.15);color:white;font-size:12px;border:1px solid rgba(255,255,255,0.25);cursor:pointer;padding:6px 12px;border-radius:999px">🚪 '+t('logout')+'</button>';
+    html+='      </div>';
+    html+='    </div>';
+    html+='  </header>';
+    html+='  <div style="padding:16px;max-width:500px;margin:0 auto">';
+
+    html+='    <div class="bg-w rounded-2xl p-6" style="box-shadow:0 4px 16px rgba(0,0,0,0.1)">';
+    html+='      <div style="text-align:center">';
+    html+='        <div style="font-size:14px;color:#6b7280;margin-bottom:4px">'+t('site')+'</div>';
+    html+='        <div style="font-size:18px;font-weight:700;color:#0e7490;margin-bottom:16px">'+w.site+'</div>';
+    html+='        <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">'+t('currentClock')+'</div>';
+    html+='        <div id="sc-clock" style="font-size:36px;font-family:monospace;font-weight:bold;color:#1f2937;margin-bottom:24px">'+new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+'</div>';
+
+    if(ck){
+      html+='        <button onclick="doCO(\''+w.id+'\')" style="width:100%;padding:18px;border-radius:14px;font-weight:bold;font-size:20px;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.3);background:linear-gradient(135deg,#ef4444,#dc2626);color:white">🚪 '+t('checkOut')+'</button>';
+      html+='        <div style="margin-top:14px;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:#dcfce7;color:#16a34a;border-radius:999px;font-size:14px;font-weight:600">🟢 '+t('checkedIn')+'</div>';
+    } else {
+      html+='        <button onclick="doCI(\''+w.id+'\')" style="width:100%;padding:18px;border-radius:14px;font-weight:bold;font-size:20px;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(6,182,212,0.3);background:linear-gradient(135deg,#0891b2,#0e7490);color:white">📍 '+t('checkIn')+'</button>';
+    }
+
+    html+='      </div>';
+    html+='    </div>';
+
+    html+='    <div style="margin-top:16px">';
+    html+='      <h3 style="font-size:16px;font-weight:700;color:white;margin-bottom:12px;text-shadow:0 1px 4px rgba(0,0,0,0.3)">📋 '+t('allAttendance')+'</h3>';
+    html+=histH;
+    html+='    </div>';
+    html+='  </div>';
+    html+='</div>';
+
+    app.innerHTML=html;
+    clockTimer=setInterval(function(){var c=document.getElementById('sc-clock');if(c)c.textContent=new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})},1000);
+    bindLang('sc-l2');
+  }
+
+  // ===== ADMIN =====
+  function renderAdmin(app){
+    var today=new Date().toISOString().split('T')[0];
+    var onSite=[],todayRecs=[];
+    for(var i=0;i<recs.length;i++){
+      if(recs[i].date===today){
+        if(!recs[i].co&&(sf==='all'||recs[i].site===sf))onSite.push(recs[i]);
+        if(sf==='all'||recs[i].site===sf)todayRecs.push(recs[i]);
+      }
+    }
+
+    // Employee hours summary
+    var empMap={};
+    for(var i=0;i<WORKERS.length;i++){
+      empMap[WORKERS[i].id]={name:WORKERS[i].name,avatar:WORKERS[i].avatar,site:WORKERS[i].site,pass:WORKERS[i].passport,totalMin:0,days:0,ci:'',co:'',onSite:false};
+    }
+    for(var i=0;i<recs.length;i++){
+      var r=recs[i];
+      if(empMap[r.wid]){
+        empMap[r.wid].days++;
+        if(r.ci&&r.co){
+          var ms=new Date(r.co)-new Date(r.ci);
+          empMap[r.wid].totalMin+=ms;
+        }
+        if(!r.co&&r.date===today)empMap[r.wid].onSite=true;
+        if(r.ci){empMap[r.wid].ci=r.ci;if(r.co)empMap[r.wid].co=r.co}
+      }
+    }
+
+    var html='';
+    html+='<div class="bg-const min-h-screen fade">';
+
+    // Admin Profile Header
+    html+='  <header style="background:linear-gradient(135deg,rgba(30,41,59,0.95),rgba(15,23,42,0.95));backdrop-filter:blur(10px);color:white;padding:20px 16px;box-shadow:0 2px 8px rgba(0,0,0,0.3)">';
+    html+='    <div style="max-width:600px;margin:0 auto;display:flex;align-items:center;gap:16px">';
+    html+='      <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0e7490,#06b6d4);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:bold;border:3px solid rgba(255,255,255,0.2)">M</div>';
+    html+='      <div style="flex:1">';
+    html+='        <div style="font-size:20px;font-weight:bold">Mohammed</div>';
+    html+='        <div style="font-size:13px;opacity:0.7">🏗️ '+t('adminSite')+' | SiteCheck</div>';
+    html+='      </div>';
+    html+='      <div style="display:flex;gap:8px;align-items:center">';
+    html+=langSelect('sc-l3');
+    html+='        <button onclick="doLogout()" style="background:rgba(255,255,255,0.1);color:white;font-size:12px;border:1px solid rgba(255,255,255,0.2);cursor:pointer;padding:6px 10px;border-radius:999px">🚪</button>';
+    html+='      </div>';
+    html+='    </div>';
+    html+='  </header>';
+
+    html+='  <div style="padding:16px;max-width:600px;margin:0 auto">';
+
+    // Stats
+    html+='  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">';
+    html+='    <div class="bg-card rounded-xl p-4 text-center">';
+    html+='      <div style="font-size:24px;font-weight:bold;color:#22d3ee">'+WORKERS.length+'</div>';
+    html+='      <div style="font-size:11px;color:#94a3b8">'+t('totalWorkers')+'</div>';
+    html+='    </div>';
+    html+='    <div class="bg-card rounded-xl p-4 text-center">';
+    html+='      <div style="font-size:24px;font-weight:bold;color:#4ade80">'+onSite.length+'</div>';
+    html+='      <div style="font-size:11px;color:#94a3b8">'+t('onSite')+'</div>';
+    html+='    </div>';
+    html+='    <div class="bg-card rounded-xl p-4 text-center">';
+    html+='      <div style="font-size:24px;font-weight:bold;color:#fbbf24">'+new Set(onSite.map(function(r){return r.site})).size+'</div>';
+    html+='      <div style="font-size:11px;color:#94a3b8">'+t('activeSites')+'</div>';
+    html+='    </div>';
+    html+='  </div>';
+
+    // Employee Hours Report
+    html+='  <div class="bg-card rounded-xl p-4 mb-4">';
+    html+='    <h3 style="font-size:15px;font-weight:700;color:#22d3ee;margin-bottom:14px">📊 '+t('emp')+'</h3>';
+
+    var empIds=Object.keys(empMap);
+    for(var i=0;i<empIds.length;i++){
+      var e=empMap[empIds[i]];
+      var hrs=Math.floor(e.totalMin/36e5);
+      var mins=Math.floor((e.totalMin%36e5)/6e4);
+      var avg=e.days>0?Math.floor(e.totalMin/e.days/6e4):0;
+      html+='    <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.08)">';
+      html+='      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">';
+      html+='        <span style="font-size:24px">'+e.avatar+'</span>';
+      html+='        <div style="flex:1">';
+      html+='          <div style="font-weight:600;color:white;font-size:14px">'+e.name+'</div>';
+      html+='          <div style="font-size:11px;color:#94a3b8">'+e.site+' | '+e.pass+'</div>';
+      html+='        </div>';
+      html+='<span style="font-size:11px;padding:3px 8px;border-radius:999px;font-weight:500;'+(e.onSite?'background:rgba(74,222,128,0.15);color:#4ade80':'background:rgba(148,163,184,0.15);color:#94a3b8')+'">'+(e.onSite?'🟢 '+t('checkedIn'):'⚪ '+t('checkedOut'))+'</span>';
+      html+='      </div>';
+      html+='      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">';
+      html+='        <div style="color:#94a3b8">'+t('totalHrs')+'<div style="font-weight:600;color:#22d3ee;font-size:14px">'+hrs+'h '+mins+'m</div></div>';
+      html+='        <div style="color:#94a3b8">'+t('avgHrs')+'<div style="font-weight:600;color:#fbbf24;font-size:14px">'+avg+'m</div></div>';
+      html+='        <div style="color:#94a3b8">'+t('lastSeen')+'<div style="font-weight:600;color:#a78bfa;font-size:14px">'+fmtT(e.co||e.ci)+'</div></div>';
+      html+='      </div>';
+      html+='    </div>';
+    }
+    html+='  </div>';
+
+    // Tabs + filter
+    html+='  <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">';
+    html+='    <button onclick="doTab(\'live\')" style="padding:8px 14px;border-radius:8px;font-size:13px;border:none;cursor:pointer;font-weight:500;'+(tab==='live'?'background:#16a34a;color:white':'background:rgba(255,255,255,0.1);color:#94a3b8')+'">'+t('liveWorkers')+'</button>';
+    html+='    <button onclick="doTab(\'all\')" style="padding:8px 14px;border-radius:8px;font-size:13px;border:none;cursor:pointer;font-weight:500;'+(tab==='all'?'background:#0891b2;color:white':'background:rgba(255,255,255,0.1);color:#94a3b8')+'">'+t('allAttendance')+'</button>';
+    var fo='<option value="all">'+t('allSites')+'</option>';
+    for(var i=0;i<SITES.length;i++)fo+='<option value="'+SITES[i]+'"'+(sf===SITES[i]?' selected':'')+'>'+SITES[i]+'</option>';
+    html+='<select onchange="doFilter(this.value)" style="margin-left:auto;padding:6px 10px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;font-size:13px;background:rgba(255,255,255,0.1);color:white">'+fo+'</select>';
+    html+='  </div>';
+
+    if(tab==='live'){
+      if(onSite.length===0){
+        html+='<div class="bg-card rounded-xl p-8 text-center" style="color:#94a3b8">✅ '+t('allClear')+'</div>';
+      } else {
+        for(var i=0;i<onSite.length;i++){
+          var r=onSite[i];var ww=null;for(var j=0;j<WORKERS.length;j++){if(WORKERS[j].id===r.wid){ww=WORKERS[j];break}}
+          html+='<div class="bg-card rounded-xl p-4 mb-2" style="border-left:4px solid #4ade80">';
+          html+='<div style="display:flex;align-items:center;gap:10px">';
+          html+='<span style="font-size:24px">'+(ww?ww.avatar:'👷')+'</span>';
+          html+='<div style="flex:1"><div style="font-weight:600;color:white;font-size:14px">'+r.wn+'</div>';
+          html+='<div style="font-size:11px;color:#94a3b8">'+(ww?ww.passport:'-')+'</div></div>';
+          html+='<span style="font-size:11px;background:rgba(74,222,128,0.15);color:#4ade80;padding:3px 8px;border-radius:999px;font-weight:500">🟢 '+t('checkedIn')+'</span>';
+          html+='</div>';
+          html+='<div style="display:flex;gap:12px;margin-top:6px;font-size:13px;color:#94a3b8">';
+          html+='<span>️ '+r.site+'</span><span>🕐 '+fmtT(r.ci)+'</span>';
+          html+='</div></div>';
+        }
+      }
+    }
+
+    if(tab==='all'){
+      if(todayRecs.length===0){
+        html+='<div class="bg-card rounded-xl p-8 text-center" style="color:#94a3b8">'+t('noData')+'</div>';
+      } else {
+        for(var i=0;i<todayRecs.length;i++){
+          var r=todayRecs[i];var ww=null;for(var j=0;j<WORKERS.length;j++){if(WORKERS[j].id===r.wid){ww=WORKERS[j];break}}
+          html+='<div class="bg-card rounded-xl p-3 mb-2">';
+          html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+          html+='<span style="font-size:20px">'+(ww?ww.avatar:'👷')+'</span>';
+          html+='<span style="font-weight:600;color:white;font-size:14px">'+r.wn+'</span>';
+          html+='<span style="margin-left:auto;font-size:11px;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:999px;color:#94a3b8">'+r.site+'</span>';
+          html+='</div>';
+          html+='<div style="display:flex;align-items:center;gap:12px;font-size:13px;color:#94a3b8">';
+          html+='<span>🕐 '+fmtT(r.ci)+'</span>';
+          html+='<span>'+(r.co?'→ '+fmtT(r.co)+' ('+dur(r.ci,r.co)+')':'🟢 '+t('checkedIn'))+'</span>';
+          html+='</div></div>';
+        }
+      }
+    }
+
+    html+='  </div>';
+    html+='</div>';
+
+    app.innerHTML=html;
+    bindLang('sc-l3');
+  }
+
+  render();
+  </script>
+</body>
+</html>
