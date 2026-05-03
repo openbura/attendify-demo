@@ -137,6 +137,7 @@ const translations = {
     stableSites: "Stable sites",
     viewSite: "View site",
     reportStatus: "Report ready",
+    openReport: "Open report",
     quickStats: "Quick stats",
     attention: "Attention",
     activeSites: "Active sites",
@@ -344,6 +345,7 @@ Object.assign(translations.he, {
   stableSites: "אתרים יציבים",
   viewSite: "צפה באתר",
   reportStatus: "דוח מוכן",
+  openReport: "פתח דוח",
 });
 
 Object.assign(translations.he, {
@@ -440,6 +442,7 @@ Object.assign(translations.he, {
   stableSites: "אתרים יציבים",
   viewSite: "צפה באתר",
   reportStatus: "דוח מוכן",
+  openReport: "פתח דוח",
   quickStats: "נתונים מהירים",
   attention: "לתשומת לב",
   activeSites: "אתרים פעילים",
@@ -1891,13 +1894,16 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, onMonthC
           const monthlyHours = getSiteMonthlyHours(workers, site.id, selectedMonth);
           return (
             <button className="report-selector-card" type="button" key={site.id} onClick={() => onOpenSite(site.id)}>
-              <div className="report-selector-icon" aria-hidden="true">
-                <NavIcon type="reports" />
-              </div>
-              <div>
-                <h3>{site.name}</h3>
-                <p>{rangeLabel}</p>
-                <small className="report-card-mode">{reportMode === "daily" ? t.dailyReport : t.monthlyReport}</small>
+              <div className="report-selector-main">
+                <div className="report-selector-icon" aria-hidden="true">
+                  <NavIcon type="reports" />
+                </div>
+                <div className="report-selector-copy">
+                  <h3>{site.name}</h3>
+                  <p>{rangeLabel}</p>
+                  <small className="report-card-mode">{reportMode === "daily" ? t.dailyReport : t.monthlyReport}</small>
+                </div>
+                <span className="report-open-chip">{t.openReport}</span>
               </div>
               <div className="report-selector-metrics">
                 {reportMode === "daily" ? (
