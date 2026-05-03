@@ -5628,12 +5628,6 @@ select:focus-visible {
   text-align: start;
 }
 
-.report-selector-card:hover,
-.report-selector-card:focus-visible {
-  border-color: rgba(13, 110, 253, 0.35);
-  box-shadow: 0 18px 38px rgba(7, 35, 91, 0.15);
-}
-
 .report-selector-main {
   display: flex;
   align-items: center;
@@ -5641,26 +5635,74 @@ select:focus-visible {
   min-width: 0;
 }
 
+.report-action-button {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  width: 82px;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cx-ink);
+  box-shadow: none;
+}
+
+.report-action-button:hover,
+.report-action-button:focus-visible {
+  background: transparent;
+  color: var(--cx-blue);
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.report-action-label {
+  display: block;
+  color: #0b2c75;
+  font-size: 13px;
+  line-height: 1.05;
+  font-weight: 950;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .report-selector-icon {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 54px;
-  height: 54px;
+  width: 62px;
+  height: 62px;
   border-radius: 8px;
   background:
     linear-gradient(90deg, var(--cx-yellow) 0 5px, transparent 5px),
-    linear-gradient(180deg, #1d78ff, #0757f3);
+    radial-gradient(circle at 28% 18%, rgba(255,255,255,0.34), transparent 34%),
+    linear-gradient(180deg, #2c8bff, #0757f3 58%, #063daa);
   color: #fff;
-  box-shadow: 0 12px 24px rgba(7, 87, 243, 0.22);
+  box-shadow: 0 14px 28px rgba(7, 87, 243, 0.28);
 }
 
 .report-selector-icon svg {
-  width: 27px;
-  height: 27px;
+  width: 34px;
+  height: 34px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.report-selector-icon .report-icon-sheet {
+  fill: rgba(255, 255, 255, 0.16);
+}
+
+.report-selector-icon .report-icon-chart,
+.report-selector-icon .report-icon-base {
+  stroke: var(--cx-yellow);
+  stroke-width: 2.2;
 }
 
 .report-selector-copy {
@@ -5697,22 +5739,6 @@ select:focus-visible {
   color: #0757f3;
   font-size: 12px;
   font-weight: 950;
-}
-
-.report-open-chip {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 8px;
-  background: #071f55;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 950;
-  white-space: nowrap;
-  box-shadow: 0 10px 22px rgba(7, 31, 85, 0.18);
 }
 
 .report-selector-metrics {

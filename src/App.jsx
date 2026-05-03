@@ -137,6 +137,7 @@ const translations = {
     stableSites: "Stable sites",
     viewSite: "View site",
     reportStatus: "Report ready",
+    siteReport: "Site report",
     openReport: "Open report",
     quickStats: "Quick stats",
     attention: "Attention",
@@ -345,6 +346,7 @@ Object.assign(translations.he, {
   stableSites: "אתרים יציבים",
   viewSite: "צפה באתר",
   reportStatus: "דוח מוכן",
+  siteReport: "דוח אתר",
   openReport: "פתח דוח",
 });
 
@@ -442,6 +444,7 @@ Object.assign(translations.he, {
   stableSites: "אתרים יציבים",
   viewSite: "צפה באתר",
   reportStatus: "דוח מוכן",
+  siteReport: "דוח אתר",
   openReport: "פתח דוח",
   quickStats: "נתונים מהירים",
   attention: "לתשומת לב",
@@ -1375,6 +1378,19 @@ function NavIcon({ type }) {
   );
 }
 
+function ReportActionIcon() {
+  return (
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <path className="report-icon-sheet" d="M8 4.5h11.5L24 9v18.5H8z" />
+      <path className="report-icon-fold" d="M19.5 4.5V9H24" />
+      <path className="report-icon-line" d="M12 13h8" />
+      <path className="report-icon-line" d="M12 17h5" />
+      <path className="report-icon-chart" d="M12 23v-3.2M16 23v-5.4M20 23v-8" />
+      <path className="report-icon-base" d="M11 23h10" />
+    </svg>
+  );
+}
+
 function AdminDashboardView({ t, workers, clock, language, onOpenMissingWorkers, onOpenSite }) {
   const todayDate = getTodayDate(clock);
   const monthId = getMonthId(clock);
@@ -1893,17 +1909,19 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, onMonthC
           const metrics = getSiteMetrics(workers, site.id, clock);
           const monthlyHours = getSiteMonthlyHours(workers, site.id, selectedMonth);
           return (
-            <button className="report-selector-card" type="button" key={site.id} onClick={() => onOpenSite(site.id)}>
+            <article className="report-selector-card" key={site.id}>
               <div className="report-selector-main">
-                <div className="report-selector-icon" aria-hidden="true">
-                  <NavIcon type="reports" />
-                </div>
                 <div className="report-selector-copy">
                   <h3>{site.name}</h3>
                   <p>{rangeLabel}</p>
                   <small className="report-card-mode">{reportMode === "daily" ? t.dailyReport : t.monthlyReport}</small>
                 </div>
-                <span className="report-open-chip">{t.openReport}</span>
+                <button className="report-action-button" type="button" onClick={() => onOpenSite(site.id)} aria-label={`${t.siteReport}: ${site.name}`}>
+                  <span className="report-action-label">{t.siteReport}</span>
+                  <span className="report-selector-icon">
+                    <ReportActionIcon />
+                  </span>
+                </button>
               </div>
               <div className="report-selector-metrics">
                 {reportMode === "daily" ? (
@@ -1922,7 +1940,7 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, onMonthC
                   </>
                 )}
               </div>
-            </button>
+            </article>
           );
         })}
       </div>
