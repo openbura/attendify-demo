@@ -1,0 +1,16 @@
+node_modules
+dist
+.qa/
+.env
+.env.local
+npm-debug.log*
+/.edge-test-profile*
+/dashboard-*.png
+/preview-*.png
+/pw-*.png
+/lt-*.png
+/localtunnel.*.log
+/cloudflared.*.log
+/.tunnel-tools/
+
+.vercel
