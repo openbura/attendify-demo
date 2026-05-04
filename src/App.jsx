@@ -29,7 +29,12 @@ const ADMIN_PASSWORD = "111";
 const ADMIN_STORAGE_KEY = "connex-admin-workers-live-v1";
 const WORKER_LANGUAGE_STORAGE_KEY = "connex-worker-language";
 const ADMIN_LANGUAGE_STORAGE_KEY = "connex-admin-language";
-const GPS_SETTINGS_STORAGE_KEY = "connex-site-gps-settings-v2";
+const LEGACY_GPS_SETTINGS_STORAGE_KEY = "connex-site-gps-settings-v2";
+const SITE_SETTINGS_STORAGE_KEY = "connex-site-settings-v1";
+const DEMO_WORKER_SITE_ID = "dania";
+const DEFAULT_WORK_DAY_START = "07:00";
+const DEFAULT_WORK_DAY_END = "19:00";
+const DEFAULT_ROUNDING_RULE = "site-day-cap";
 
 const fieldInitialState = { workerId: "", password: "" };
 
@@ -158,13 +163,19 @@ const translations = {
     noNote: "No note",
     settings: "Settings",
     siteGpsSettings: "Site GPS Settings",
-    gpsSettingsSubtitle: "Configure check-in radius for the construction site",
+    siteSettings: "Site Settings",
+    gpsSettingsSubtitle: "Configure GPS, location radius, and work hours per site",
     siteName: "Site name",
     siteAddress: "Site address",
     latitude: "Latitude",
     longitude: "Longitude",
     allowedRadius: "Allowed radius",
     allowedRadiusMeters: "Allowed radius in meters",
+    workDayStartTime: "Work day start time",
+    workDayEndTime: "Work day end time",
+    roundingRules: "Rounding rules for attendance",
+    roundingRulesDescription: "Early check-ins count from the start time. Late check-outs count until the end time.",
+    saveSiteSettings: "Save site settings",
     saveSettings: "Save settings",
     settingsSaved: "Settings saved",
     testCurrentLocation: "Test current location",
@@ -183,6 +194,7 @@ const translations = {
     tooFarFromSiteWithDistance: "You are {distance} meters from the site. Check-in is allowed only within {radius} meters.",
     withinRangeApproved: "You are within range. Check-in approved.",
     gpsSettingsInvalid: "Please enter valid latitude, longitude, and radius.",
+    siteSettingsInvalid: "Please enter valid site coordinates, radius, and work hours.",
     findCoordinates: "Find coordinates",
     searchingAddress: "Searching address...",
     addressUpdated: "Address found. Coordinates updated.",
@@ -468,13 +480,19 @@ Object.assign(translations.he, {
 Object.assign(translations.he, {
   settings: "הגדרות",
   siteGpsSettings: "הגדרות GPS לאתר",
-  gpsSettingsSubtitle: "הגדרת רדיוס כניסה לאתר הבנייה",
+  siteSettings: "הגדרות אתר",
+  gpsSettingsSubtitle: "הגדרת GPS, רדיוס ושעות עבודה לפי אתר",
   siteName: "שם אתר",
   siteAddress: "כתובת אתר",
   latitude: "קו רוחב",
   longitude: "קו אורך",
   allowedRadius: "רדיוס מותר",
   allowedRadiusMeters: "רדיוס מותר במטרים",
+  workDayStartTime: "שעת התחלת יום עבודה",
+  workDayEndTime: "שעת סיום יום עבודה",
+  roundingRules: "כללי עיגול נוכחות",
+  roundingRulesDescription: "כניסה מוקדמת נספרת משעת ההתחלה. יציאה מאוחרת נספרת עד שעת הסיום.",
+  saveSiteSettings: "שמור הגדרות אתר",
   saveSettings: "שמור הגדרות",
   settingsSaved: "ההגדרות נשמרו",
   testCurrentLocation: "בדוק מיקום נוכחי",
@@ -493,6 +511,7 @@ Object.assign(translations.he, {
   tooFarFromSiteWithDistance: "אתה נמצא במרחק {distance} מטרים מהאתר. כניסה מותרת רק עד {radius} מטרים.",
   withinRangeApproved: "אתה בתוך הטווח. הכניסה אושרה.",
   gpsSettingsInvalid: "יש להזין קו רוחב, קו אורך ורדיוס תקינים.",
+  siteSettingsInvalid: "יש להזין קואורדינטות, רדיוס ושעות עבודה תקינים.",
   findCoordinates: "מצא קואורדינטות",
   searchingAddress: "מחפש כתובת...",
   addressUpdated: "הכתובת נמצאה. הקואורדינטות עודכנו.",
@@ -508,26 +527,211 @@ function timeToMinutes(time) {
   return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null;
 }
 
-function getRecordMinutes(record) {
-  const entryMinutes = timeToMinutes(record.entry);
-  const exitMinutes = timeToMinutes(record.exit);
-  if (entryMinutes === null || exitMinutes === null || exitMinutes < entryMinutes) return null;
-  return exitMinutes - entryMinutes;
-}
-
 function formatMinutes(minutes) {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   return `${String(hours).padStart(2, "0")}:${String(remainingMinutes).padStart(2, "0")}`;
 }
 
-function getRecordTotal(record) {
-  const minutes = getRecordMinutes(record);
+const defaultSiteAddresses = {
+  dania: DEFAULT_SITE_GPS_SETTINGS.siteAddress,
+  golomb: "גולומב 38, רמת השרון",
+  forma: "תל אביב-יפו",
+};
+
+const defaultSiteCoordinates = {
+  dania: {
+    latitude: DEFAULT_SITE_GPS_SETTINGS.latitude,
+    longitude: DEFAULT_SITE_GPS_SETTINGS.longitude,
+  },
+  golomb: {
+    latitude: 32.1467,
+    longitude: 34.8397,
+  },
+  forma: {
+    latitude: 32.0853,
+    longitude: 34.7818,
+  },
+};
+
+function normalizeTimeValue(value, fallback) {
+  return timeToMinutes(value) === null ? fallback : value;
+}
+
+function getDefaultSiteSettingsForSite(site) {
+  const coordinates = defaultSiteCoordinates[site.id] || defaultSiteCoordinates.dania;
+  return {
+    siteId: site.id,
+    siteName: site.name,
+    siteAddress: defaultSiteAddresses[site.id] || site.location || site.name,
+    latitude: coordinates.latitude,
+    longitude: coordinates.longitude,
+    radiusMeters: DEFAULT_SITE_GPS_SETTINGS.radiusMeters,
+    workDayStartTime: DEFAULT_WORK_DAY_START,
+    workDayEndTime: DEFAULT_WORK_DAY_END,
+    roundingRule: DEFAULT_ROUNDING_RULE,
+  };
+}
+
+function getDefaultSiteSettingsMap() {
+  return Object.fromEntries(siteDefinitions.map((site) => [site.id, getDefaultSiteSettingsForSite(site)]));
+}
+
+function normalizeSiteSetting(siteId = DEMO_WORKER_SITE_ID, settings = {}) {
+  const site = siteDefinitions.find((item) => item.id === siteId) || siteDefinitions[0];
+  const defaults = getDefaultSiteSettingsForSite(site);
+  const latitude = Number(settings.latitude);
+  const longitude = Number(settings.longitude);
+  const radiusMeters = Number(settings.radiusMeters);
+
+  return {
+    ...defaults,
+    ...settings,
+    siteId: site.id,
+    siteName: settings.siteName || defaults.siteName,
+    siteAddress: settings.siteAddress || defaults.siteAddress,
+    latitude: Number.isFinite(latitude) ? latitude : defaults.latitude,
+    longitude: Number.isFinite(longitude) ? longitude : defaults.longitude,
+    radiusMeters: Number.isFinite(radiusMeters) && radiusMeters > 0 ? radiusMeters : defaults.radiusMeters,
+    workDayStartTime: normalizeTimeValue(settings.workDayStartTime, defaults.workDayStartTime),
+    workDayEndTime: normalizeTimeValue(settings.workDayEndTime, defaults.workDayEndTime),
+    roundingRule: settings.roundingRule || DEFAULT_ROUNDING_RULE,
+  };
+}
+
+function normalizeSiteSettingsMap(settingsMap = {}) {
+  const looksLikeSingleGpsSetting =
+    settingsMap &&
+    typeof settingsMap === "object" &&
+    !Array.isArray(settingsMap) &&
+    ("latitude" in settingsMap || "longitude" in settingsMap || "radiusMeters" in settingsMap) &&
+    !settingsMap[DEMO_WORKER_SITE_ID];
+  const source = looksLikeSingleGpsSetting ? { [settingsMap.siteId || DEMO_WORKER_SITE_ID]: settingsMap } : settingsMap || {};
+
+  return Object.fromEntries(
+    siteDefinitions.map((site) => [site.id, normalizeSiteSetting(site.id, source[site.id])]),
+  );
+}
+
+function getStoredSiteSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SITE_SETTINGS_STORAGE_KEY) || "null");
+    if (stored) return normalizeSiteSettingsMap(stored);
+
+    const legacyGpsSettings = JSON.parse(localStorage.getItem(LEGACY_GPS_SETTINGS_STORAGE_KEY) || "null");
+    return normalizeSiteSettingsMap(legacyGpsSettings || getDefaultSiteSettingsMap());
+  } catch {
+    return normalizeSiteSettingsMap(getDefaultSiteSettingsMap());
+  }
+}
+
+function getSiteSetting(siteSettings, siteId = DEMO_WORKER_SITE_ID) {
+  return normalizeSiteSetting(siteId, siteSettings?.[siteId]);
+}
+
+function getGpsSiteLocation(siteSetting) {
+  return {
+    latitude: Number(siteSetting.latitude),
+    longitude: Number(siteSetting.longitude),
+  };
+}
+
+function hasValidSiteSettings(siteSetting) {
+  const { latitude, longitude } = getGpsSiteLocation(siteSetting);
+  const radiusMeters = Number(siteSetting.radiusMeters);
+  const startMinutes = timeToMinutes(siteSetting.workDayStartTime);
+  const endMinutes = timeToMinutes(siteSetting.workDayEndTime);
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Number.isFinite(radiusMeters) &&
+    radiusMeters > 0 &&
+    startMinutes !== null &&
+    endMinutes !== null &&
+    endMinutes > startMinutes
+  );
+}
+
+function getCalculatedAttendance(record, siteSetting = getSiteSetting(null)) {
+  if (!record || record.status) {
+    return {
+      actualEntryTime: record?.actualEntryTime || record?.entry || "",
+      actualExitTime: record?.actualExitTime || record?.exit || "",
+      calculatedEntryTime: "",
+      calculatedExitTime: "",
+      minutes: null,
+    };
+  }
+
+  const setting = normalizeSiteSetting(record.siteId || siteSetting.siteId || DEMO_WORKER_SITE_ID, siteSetting);
+  const actualEntryTime = record.actualEntryTime || record.entry || "";
+  const actualExitTime = record.actualExitTime || record.exit || "";
+  const entryMinutes = timeToMinutes(actualEntryTime);
+  const exitMinutes = timeToMinutes(actualExitTime);
+  const startMinutes = timeToMinutes(setting.workDayStartTime);
+  const endMinutes = timeToMinutes(setting.workDayEndTime);
+
+  if (entryMinutes === null || startMinutes === null || endMinutes === null) {
+    return { actualEntryTime, actualExitTime, calculatedEntryTime: "", calculatedExitTime: "", minutes: null };
+  }
+
+  const calculatedEntryMinutes = Math.max(entryMinutes, startMinutes);
+  if (exitMinutes === null) {
+    return {
+      actualEntryTime,
+      actualExitTime,
+      calculatedEntryTime: formatMinutes(calculatedEntryMinutes),
+      calculatedExitTime: "",
+      minutes: null,
+    };
+  }
+
+  const calculatedExitMinutes = Math.min(exitMinutes, endMinutes);
+  if (calculatedExitMinutes < calculatedEntryMinutes) {
+    return {
+      actualEntryTime,
+      actualExitTime,
+      calculatedEntryTime: formatMinutes(calculatedEntryMinutes),
+      calculatedExitTime: formatMinutes(calculatedExitMinutes),
+      minutes: null,
+    };
+  }
+
+  return {
+    actualEntryTime,
+    actualExitTime,
+    calculatedEntryTime: formatMinutes(calculatedEntryMinutes),
+    calculatedExitTime: formatMinutes(calculatedExitMinutes),
+    minutes: calculatedExitMinutes - calculatedEntryMinutes,
+  };
+}
+
+function applyAttendanceRules(record, siteSetting) {
+  const calculated = getCalculatedAttendance(record, siteSetting);
+  const totalCalculatedHours = calculated.minutes === null ? "" : formatMinutes(calculated.minutes);
+  return {
+    ...record,
+    actualEntryTime: calculated.actualEntryTime,
+    actualExitTime: calculated.actualExitTime,
+    entry: calculated.calculatedEntryTime || "",
+    exit: calculated.calculatedExitTime || "",
+    calculatedEntryTime: calculated.calculatedEntryTime,
+    calculatedExitTime: calculated.calculatedExitTime,
+    totalCalculatedHours,
+  };
+}
+
+function getRecordMinutes(record, siteSetting) {
+  return getCalculatedAttendance(record, siteSetting).minutes;
+}
+
+function getRecordTotal(record, siteSetting) {
+  const minutes = getRecordMinutes(record, siteSetting);
   return minutes === null ? "" : formatMinutes(minutes);
 }
 
-function getDecimalHours(record) {
-  const minutes = getRecordMinutes(record);
+function getDecimalHours(record, siteSetting) {
+  const minutes = getRecordMinutes(record, siteSetting);
   return minutes === null ? 0 : minutes / 60;
 }
 
@@ -545,17 +749,21 @@ function formatText(template, values = {}) {
   return Object.entries(values).reduce((message, [key, value]) => message.replaceAll(`{${key}}`, value), template || "");
 }
 
-function getInitialWorkerRecords(referenceDate = new Date()) {
+function getInitialWorkerRecords(referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const siteSetting = getSiteSetting(siteSettings, DEMO_WORKER_SITE_ID);
   return getCurrentMonthDates(referenceDate)
     .filter((date) => !isSameDate(date, referenceDate))
     .map((date, index) => {
       const times = getDeterministicAttendance(1, index + 1);
-      return {
+      return applyAttendanceRules({
         id: index + 1,
         date,
+        siteId: DEMO_WORKER_SITE_ID,
+        actualEntryTime: times.entry,
+        actualExitTime: times.exit,
         entry: times.entry,
         exit: times.exit,
-      };
+      }, siteSetting);
     });
 }
 
@@ -579,6 +787,8 @@ function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
       date: todayDate,
       entry: "",
       exit: "",
+      actualEntryTime: "",
+      actualExitTime: "",
     };
   }
 
@@ -588,6 +798,8 @@ function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
   return {
     ...worker,
     date: todayDate,
+    actualEntryTime: worker.actualEntryTime || generatedTimes.entry,
+    actualExitTime: worker.actualExitTime || generatedTimes.exit,
     entry: generatedTimes.entry,
     exit: generatedTimes.exit,
     status: "",
@@ -602,8 +814,8 @@ function formatCurrentTime(date = new Date()) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function getMonthlyTotal(records) {
-  return formatMinutes(records.reduce((sum, record) => sum + (getRecordMinutes(record) || 0), 0));
+function getMonthlyTotal(records, siteSetting) {
+  return formatMinutes(records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0));
 }
 
 function getInitialWorkerLanguage() {
@@ -631,42 +843,6 @@ function getStoredAdminWorkers() {
   }
 }
 
-function normalizeGpsSettings(settings = {}) {
-  const latitude = Number(settings.latitude);
-  const longitude = Number(settings.longitude);
-  const radiusMeters = Number(settings.radiusMeters);
-
-  return {
-    ...DEFAULT_SITE_GPS_SETTINGS,
-    ...settings,
-    latitude: Number.isFinite(latitude) ? latitude : DEFAULT_SITE_GPS_SETTINGS.latitude,
-    longitude: Number.isFinite(longitude) ? longitude : DEFAULT_SITE_GPS_SETTINGS.longitude,
-    radiusMeters: Number.isFinite(radiusMeters) && radiusMeters > 0 ? radiusMeters : DEFAULT_SITE_GPS_SETTINGS.radiusMeters,
-  };
-}
-
-function getStoredGpsSettings() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(GPS_SETTINGS_STORAGE_KEY) || "null");
-    return normalizeGpsSettings(stored || DEFAULT_SITE_GPS_SETTINGS);
-  } catch {
-    return normalizeGpsSettings(DEFAULT_SITE_GPS_SETTINGS);
-  }
-}
-
-function getGpsSiteLocation(gpsSettings) {
-  return {
-    latitude: Number(gpsSettings.latitude),
-    longitude: Number(gpsSettings.longitude),
-  };
-}
-
-function hasValidGpsSettings(gpsSettings) {
-  const { latitude, longitude } = getGpsSiteLocation(gpsSettings);
-  const radiusMeters = Number(gpsSettings.radiusMeters);
-  return Number.isFinite(latitude) && Number.isFinite(longitude) && Number.isFinite(radiusMeters) && radiusMeters > 0;
-}
-
 function formatDistanceMeters(distanceMeters) {
   return new Intl.NumberFormat("en-US").format(Math.round(distanceMeters));
 }
@@ -675,12 +851,13 @@ function formatGpsMessage(template, values) {
   return Object.entries(values).reduce((message, [key, value]) => message.replace(`{${key}}`, value), template);
 }
 
-function getSiteMetrics(workers, siteId, referenceDate = new Date()) {
+function getSiteMetrics(workers, siteId, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
   const todayDate = getTodayDate(referenceDate);
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId && isSameDate(worker.date || todayDate, todayDate));
+  const siteSetting = getSiteSetting(siteSettings, siteId);
   const worked = siteWorkers.filter((worker) => worker.entry && worker.exit);
   const missing = siteWorkers.length - worked.length;
-  const totalHours = siteWorkers.reduce((sum, worker) => sum + getDecimalHours(worker), 0);
+  const totalHours = siteWorkers.reduce((sum, worker) => sum + getDecimalHours(worker, siteSetting), 0);
   return {
     totalWorkers: siteWorkers.length,
     worked: worked.length,
@@ -690,12 +867,12 @@ function getSiteMetrics(workers, siteId, referenceDate = new Date()) {
   };
 }
 
-function getGlobalAdminMetrics(workers, referenceDate = new Date()) {
+function getGlobalAdminMetrics(workers, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
   const todayDate = getTodayDate(referenceDate);
   const todayWorkers = workers.filter((worker) => isSameDate(worker.date || todayDate, todayDate));
   const worked = todayWorkers.filter((worker) => worker.entry && worker.exit);
   const missing = todayWorkers.length - worked.length;
-  const totalHours = todayWorkers.reduce((sum, worker) => sum + getDecimalHours(worker), 0);
+  const totalHours = todayWorkers.reduce((sum, worker) => sum + getDecimalHours(worker, getSiteSetting(siteSettings, worker.siteId)), 0);
 
   return {
     totalWorkers: todayWorkers.length,
@@ -741,25 +918,37 @@ function getStatusLabel(status, language, t) {
   return statusLabels[status]?.[language === "he" ? "he" : "en"] || status;
 }
 
-function getWorkerMonthlySummary(worker, t, language, monthId = getDefaultReportMonthId()) {
-  const records = getReportRowsForWorker(worker, monthId);
-  const workedRecords = records.filter((record) => getRecordMinutes(record));
-  const missingRecords = records.filter((record) => !getRecordMinutes(record));
+function getWorkerMonthlySummary(worker, t, language, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
+  const records = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings);
+  const workedRecords = records.filter((record) => getRecordMinutes(record, siteSetting));
+  const missingRecords = records.filter((record) => !getRecordMinutes(record, siteSetting));
 
   return {
     daysWorked: workedRecords.length,
     missingDays: missingRecords.length,
-    totalHours: formatMinutes(records.reduce((sum, record) => sum + (getRecordMinutes(record) || 0), 0)),
+    totalHours: formatMinutes(records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0)),
   };
 }
 
-function getReportRowsForWorker(worker, monthId = getDefaultReportMonthId()) {
-  const dates = getReportDates(monthId);
-  return dates.map((date, index) => getDemoRecordForDate(worker, date, index));
+function getReportRowsForWorker(worker, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const dates = getReportDates(monthId, referenceDate);
+  const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
+  return dates.map((date, index) => applyAttendanceRules(getDemoRecordForDate(worker, date, index), siteSetting));
 }
 
 function getDemoRecordForDate(worker, date, index = 0) {
-  if (isSameDate(date, getTodayDate()) && worker) return { date, entry: worker.entry, exit: worker.exit, status: worker.status };
+  if (isSameDate(date, getTodayDate()) && worker) {
+    return {
+      date,
+      siteId: worker.siteId,
+      actualEntryTime: worker.actualEntryTime || worker.entry,
+      actualExitTime: worker.actualExitTime || worker.exit,
+      entry: worker.entry,
+      exit: worker.exit,
+      status: worker.status,
+    };
+  }
   const seed = worker?.id || 1;
   const day = Number(date.slice(0, 2));
   const month = Number(date.slice(3, 5));
@@ -767,30 +956,39 @@ function getDemoRecordForDate(worker, date, index = 0) {
   if (marker % 7 === 0) return { date, entry: "", exit: "", status: "אי הגעה" };
   if (marker % 11 === 0) return { date, entry: "", exit: "", status: "מחלה" };
   const times = getDeterministicAttendance(seed, index + month);
-  return { date, entry: times.entry, exit: times.exit, status: "" };
+  return {
+    date,
+    siteId: worker?.siteId,
+    actualEntryTime: times.entry,
+    actualExitTime: times.exit,
+    entry: times.entry,
+    exit: times.exit,
+    status: "",
+  };
 }
 
-function getGlobalMonthlyHours(workers, monthId = getDefaultReportMonthId()) {
+function getGlobalMonthlyHours(workers, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
   const minutes = workers.reduce((sum, worker) => {
-    return sum + getReportRowsForWorker(worker, monthId).reduce((recordSum, record) => recordSum + (getRecordMinutes(record) || 0), 0);
+    const siteSetting = getSiteSetting(siteSettings, worker.siteId);
+    return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
   }, 0);
   return Math.round((minutes / 60) * 10) / 10;
 }
 
-function getAttentionWorkers(workers, t, language) {
+function getAttentionWorkers(workers, t, language, siteSettings = getDefaultSiteSettingsMap()) {
   return workers
     .map((worker) => {
       if (worker.status) return { worker, label: getStatusLabel(worker.status, language, t) };
       if (!worker.entry || !worker.exit) return { worker, label: t.missingData };
-      const minutes = getRecordMinutes(worker);
+      const minutes = getRecordMinutes(worker, getSiteSetting(siteSettings, worker.siteId));
       if (minutes && minutes > 11 * 60) return { worker, label: t.unusualHours };
       return null;
     })
     .filter(Boolean);
 }
 
-function getRecentActivity(workers, t, language) {
-  const attention = getAttentionWorkers(workers, t, language);
+function getRecentActivity(workers, t, language, siteSettings = getDefaultSiteSettingsMap()) {
+  const attention = getAttentionWorkers(workers, t, language, siteSettings);
   const sickWorker = attention.find(({ worker }) => worker.status);
   const missingWorkers = workers.filter((worker) => !worker.entry || !worker.exit).length;
   const updatedSite = siteDefinitions[0];
@@ -849,13 +1047,13 @@ function App() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [activeEntryDate, setActiveEntryDate] = useState("");
   const [activeEntryTime, setActiveEntryTime] = useState("");
-  const [records, setRecords] = useState(() => getInitialWorkerRecords());
+  const [siteSettings, setSiteSettings] = useState(getStoredSiteSettings);
+  const [records, setRecords] = useState(() => getInitialWorkerRecords(new Date(), getStoredSiteSettings()));
   const [adminWorkers, setAdminWorkers] = useState(getStoredAdminWorkers);
   const [workerLanguage, setWorkerLanguage] = useState(getInitialWorkerLanguage);
   const [adminLanguage, setAdminLanguage] = useState(getInitialAdminLanguage);
   const [clock, setClock] = useState(new Date());
   const [selectedReportMonth, setSelectedReportMonth] = useState(() => getDefaultReportMonthId());
-  const [gpsSettings, setGpsSettings] = useState(getStoredGpsSettings);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [gpsStatus, setGpsStatus] = useState(null);
 
@@ -866,6 +1064,7 @@ function App() {
   const currentMonthId = getMonthId(clock);
   const currentMonthWorkerRecords = useMemo(() => getRecordsForMonth(records, clock), [records, currentMonthId]);
   const currentMonthLabel = getMonthLabel(currentMonthId, language);
+  const workerSiteSetting = useMemo(() => getSiteSetting(siteSettings, DEMO_WORKER_SITE_ID), [siteSettings]);
 
   useEffect(() => {
     localStorage.setItem(WORKER_LANGUAGE_STORAGE_KEY, workerLanguage);
@@ -880,8 +1079,8 @@ function App() {
   }, [adminWorkers]);
 
   useEffect(() => {
-    localStorage.setItem(GPS_SETTINGS_STORAGE_KEY, JSON.stringify(gpsSettings));
-  }, [gpsSettings]);
+    localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(siteSettings));
+  }, [siteSettings]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(new Date()), 1000);
@@ -947,14 +1146,14 @@ function App() {
       setGpsStatus({ type: "info", message: t.checkingLocation });
 
       try {
-        if (!hasValidGpsSettings(gpsSettings)) {
-          setGpsStatus({ type: "error", message: t.gpsSettingsInvalid });
+        if (!hasValidSiteSettings(workerSiteSetting)) {
+          setGpsStatus({ type: "error", message: t.siteSettingsInvalid || t.gpsSettingsInvalid });
           return;
         }
 
         const currentLocation = await getCurrentLocation();
-        const siteLocation = getGpsSiteLocation(gpsSettings);
-        const radiusMeters = Number(gpsSettings.radiusMeters);
+        const siteLocation = getGpsSiteLocation(workerSiteSetting);
+        const radiusMeters = Number(workerSiteSetting.radiusMeters);
         const result = isWithinAllowedRadius(currentLocation, siteLocation, radiusMeters);
 
         if (!result.isWithinRadius) {
@@ -975,7 +1174,16 @@ function App() {
         setActiveEntryDate(entryDateLabel);
         setActiveEntryTime(entryTime);
         setRecords((currentRecords) => [
-          { id: Date.now(), date: entryDateLabel, entry: entryTime, exit: "", source: "live" },
+          applyAttendanceRules({
+            id: Date.now(),
+            date: entryDateLabel,
+            siteId: DEMO_WORKER_SITE_ID,
+            actualEntryTime: entryTime,
+            actualExitTime: "",
+            entry: entryTime,
+            exit: "",
+            source: "live",
+          }, workerSiteSetting),
           ...currentRecords.filter((record) => !isSameDate(record.date, entryDateLabel)),
         ]);
         setGpsStatus({ type: "success", message: t.withinRangeApproved });
@@ -994,7 +1202,16 @@ function App() {
     const recordDate = getTodayDate(exitDate);
     const exitTime = formatCurrentTime(exitDate);
     setRecords((currentRecords) => [
-      { id: Date.now(), date: activeEntryDate || recordDate, entry: activeEntryTime || formatCurrentTime(exitDate), exit: exitTime, source: "live" },
+      applyAttendanceRules({
+        id: Date.now(),
+        date: activeEntryDate || recordDate,
+        siteId: DEMO_WORKER_SITE_ID,
+        actualEntryTime: activeEntryTime || formatCurrentTime(exitDate),
+        actualExitTime: exitTime,
+        entry: activeEntryTime || formatCurrentTime(exitDate),
+        exit: exitTime,
+        source: "live",
+      }, workerSiteSetting),
       ...currentRecords.filter((record) => !isSameDate(record.date, activeEntryDate || recordDate)),
     ]);
     setIsCheckedIn(false);
@@ -1008,9 +1225,10 @@ function App() {
       workers.map((worker) => {
         if (worker.id !== workerId) return worker;
         const updated = { ...worker, [field]: value, date: todayDate };
+        if (field === "entry") return { ...updated, actualEntryTime: value, calculatedEntryTime: "", totalCalculatedHours: "", status: "" };
+        if (field === "exit") return { ...updated, actualExitTime: value, calculatedExitTime: "", totalCalculatedHours: "", status: "" };
         if (field === "status" && value) return { ...updated, entry: "", exit: "" };
         if (field === "status" && !value) return normalizeAdminWorker({ ...updated, status: "" });
-        if ((field === "entry" || field === "exit") && value) return { ...updated, status: "" };
         return updated;
       }),
     );
@@ -1019,7 +1237,7 @@ function App() {
   if (screen === "history") {
     return (
       <DashboardShell t={t} isRtl={isRtl} language={language} onLanguageChange={handleWorkerLanguageChange} onLogout={handleLogout}>
-        <FullHistoryView t={t} records={currentMonthWorkerRecords} monthLabel={currentMonthLabel} onBack={() => setScreen("dashboard")} />
+        <FullHistoryView t={t} records={currentMonthWorkerRecords} monthLabel={currentMonthLabel} siteSetting={workerSiteSetting} onBack={() => setScreen("dashboard")} />
       </DashboardShell>
     );
   }
@@ -1032,6 +1250,7 @@ function App() {
           isCheckedIn={isCheckedIn}
           entryTime={activeEntryTime}
           records={currentMonthWorkerRecords}
+          siteSetting={workerSiteSetting}
           onToggle={handleAttendanceToggle}
           isCheckingLocation={isCheckingLocation}
           gpsStatus={gpsStatus}
@@ -1049,6 +1268,7 @@ function App() {
         language={language}
         clock={clock}
         workers={adminWorkers}
+        siteSettings={siteSettings}
         activeView={adminView}
         onLanguageChange={handleAdminLanguageChange}
         onLogout={handleLogout}
@@ -1060,6 +1280,7 @@ function App() {
             workers={adminWorkers}
             clock={clock}
             language={language}
+            siteSettings={siteSettings}
             onOpenMissingWorkers={() => setAdminView("missingWorkers")}
             onOpenSite={(siteId) => {
               setActiveSiteId(siteId);
@@ -1073,6 +1294,7 @@ function App() {
             language={language}
             workers={adminWorkers}
             clock={clock}
+            siteSettings={siteSettings}
             onBack={() => setAdminView("dashboard")}
             onOpenSite={(siteId) => {
               setActiveSiteId(siteId);
@@ -1087,6 +1309,7 @@ function App() {
             siteId={activeSiteId}
             workers={adminWorkers}
             clock={clock}
+            siteSettings={siteSettings}
             onBack={() => setAdminView("dashboard")}
             onUpdateWorker={updateAdminWorker}
             onOpenWorker={(workerId) => {
@@ -1103,6 +1326,7 @@ function App() {
             worker={adminWorkers.find((worker) => worker.id === activeWorkerId)}
             siteId={activeSiteId}
             clock={clock}
+            siteSettings={siteSettings}
             onBack={() => setAdminView(workerHistoryBackView)}
           />
         ) : null}
@@ -1113,6 +1337,7 @@ function App() {
             workers={adminWorkers}
             selectedMonth={selectedReportMonth}
             clock={clock}
+            siteSettings={siteSettings}
             onMonthChange={setSelectedReportMonth}
             onOpenSite={(siteId) => {
               setActiveSiteId(siteId);
@@ -1128,6 +1353,7 @@ function App() {
             workers={adminWorkers}
             selectedMonth={selectedReportMonth}
             clock={clock}
+            siteSettings={siteSettings}
             onMonthChange={setSelectedReportMonth}
             onOpenWorker={(workerId) => {
               setActiveWorkerId(workerId);
@@ -1138,13 +1364,18 @@ function App() {
           />
         ) : null}
         {adminView === "settings" ? (
-          <AdminSettingsView
+          <AdminSiteSettingsView
             t={t}
-            gpsSettings={gpsSettings}
-            onSaveGpsSettings={(nextSettings) => setGpsSettings(normalizeGpsSettings(nextSettings))}
+            siteSettings={siteSettings}
+            onSaveSiteSettings={(siteId, nextSettings) =>
+              setSiteSettings((currentSettings) => ({
+                ...currentSettings,
+                [siteId]: normalizeSiteSetting(siteId, nextSettings),
+              }))
+            }
           />
         ) : null}
-        {adminView === "projects" ? <AdminProjectsView t={t} language={language} workers={adminWorkers} onOpenSite={(siteId) => {
+        {adminView === "projects" ? <AdminProjectsView t={t} language={language} workers={adminWorkers} siteSettings={siteSettings} onOpenSite={(siteId) => {
           setActiveSiteId(siteId);
           setAdminView("site");
         }} /> : null}
@@ -1204,7 +1435,7 @@ function DashboardShell({ t, isRtl, language, onLanguageChange, onLogout, childr
   );
 }
 
-function WorkerDashboard({ t, isCheckedIn, entryTime, records, onToggle, isCheckingLocation, gpsStatus, onFullHistory }) {
+function WorkerDashboard({ t, isCheckedIn, entryTime, records, siteSetting, onToggle, isCheckingLocation, gpsStatus, onFullHistory }) {
   return (
     <section className="worker-dashboard">
       <WorkerCard t={t} isCheckedIn={isCheckedIn} />
@@ -1213,7 +1444,7 @@ function WorkerDashboard({ t, isCheckedIn, entryTime, records, onToggle, isCheck
         {isCheckedIn ? <small className="attendance-time-text">{t.enteredAt.replace("{time}", entryTime || formatCurrentTime())}</small> : null}
       </button>
       {gpsStatus ? <p className={`gps-worker-message ${gpsStatus.type}`} role={gpsStatus.type === "error" ? "alert" : "status"}>{gpsStatus.message}</p> : null}
-      <HistoryCard t={t} records={records.slice(0, 5)} onFullHistory={onFullHistory} />
+      <HistoryCard t={t} records={records.slice(0, 5)} siteSetting={siteSetting} onFullHistory={onFullHistory} />
     </section>
   );
 }
@@ -1232,46 +1463,54 @@ function WorkerCard({ t, isCheckedIn }) {
   );
 }
 
-function HistoryCard({ t, records, onFullHistory }) {
+function HistoryCard({ t, records, siteSetting, onFullHistory }) {
   return (
     <section className="history-card">
       <SectionTitle>{t.recentHistory}</SectionTitle>
-      <HistoryTable t={t} records={records} />
+      <HistoryTable t={t} records={records} siteSetting={siteSetting} />
       <button className="full-history-button" type="button" onClick={onFullHistory}>{t.fullHistory}</button>
     </section>
   );
 }
 
-function FullHistoryView({ t, records, monthLabel, onBack }) {
+function FullHistoryView({ t, records, monthLabel, siteSetting, onBack }) {
   return (
     <section className="full-history-view">
       <button className="back-button" type="button" onClick={onBack}>{t.back}</button>
       <section className="history-card full">
         <SectionTitle>{formatText(t.monthlyHistory, { month: monthLabel })}</SectionTitle>
-        <HistoryTable t={t} records={records} />
-        <MonthlySummary t={t} records={records} />
+        <HistoryTable t={t} records={records} siteSetting={siteSetting} />
+        <MonthlySummary t={t} records={records} siteSetting={siteSetting} />
       </section>
     </section>
   );
 }
 
-function HistoryTable({ t, records }) {
+function HistoryTable({ t, records, siteSetting }) {
   return (
     <div className="history-table" role="table" aria-label={t.recentHistory}>
       <div className="history-row header" role="row"><span>{t.date}</span><span>{t.entry}</span><span>{t.exit}</span><span>{t.totalHours}</span></div>
-      {records.map((record) => (
-        <div className="history-row" role="row" key={record.id}><span>{record.date}</span><span>{record.entry}</span><span>{record.exit || t.noExitYet}</span><span>{record.exit ? getRecordTotal(record) : "-"}</span></div>
-      ))}
+      {records.map((record) => {
+        const displayRecord = applyAttendanceRules(record, siteSetting);
+        return (
+          <div className="history-row" role="row" key={record.id}>
+            <span>{displayRecord.date}</span>
+            <span>{displayRecord.entry}</span>
+            <span>{displayRecord.exit || t.noExitYet}</span>
+            <span>{displayRecord.exit ? getRecordTotal(displayRecord, siteSetting) : "-"}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function MonthlySummary({ t, records }) {
-  return <section className="monthly-summary"><h3>{t.monthlySummary}</h3><p>{t.totalMonthlyHours.replace("{hours}", getMonthlyTotal(records))}</p></section>;
+function MonthlySummary({ t, records, siteSetting }) {
+  return <section className="monthly-summary"><h3>{t.monthlySummary}</h3><p>{t.totalMonthlyHours.replace("{hours}", getMonthlyTotal(records, siteSetting))}</p></section>;
 }
 
-function AdminShell({ t, isRtl, language, clock, workers, activeView, onLanguageChange, onLogout, onNavigate, children }) {
-  const sidebarMetrics = getGlobalAdminMetrics(workers || [], clock);
+function AdminShell({ t, isRtl, language, clock, workers, siteSettings, activeView, onLanguageChange, onLogout, onNavigate, children }) {
+  const sidebarMetrics = getGlobalAdminMetrics(workers || [], clock, siteSettings);
 
   return (
     <main className="admin-shell" dir={isRtl ? "rtl" : "ltr"}>
@@ -1391,19 +1630,19 @@ function ReportActionIcon() {
   );
 }
 
-function AdminDashboardView({ t, workers, clock, language, onOpenMissingWorkers, onOpenSite }) {
+function AdminDashboardView({ t, workers, clock, language, siteSettings, onOpenMissingWorkers, onOpenSite }) {
   const todayDate = getTodayDate(clock);
   const monthId = getMonthId(clock);
   const monthLabel = getMonthLabel(monthId, language);
-  const globalMetrics = getGlobalAdminMetrics(workers, clock);
-  const monthHours = getGlobalMonthlyHours(workers, monthId);
+  const globalMetrics = getGlobalAdminMetrics(workers, clock, siteSettings);
+  const monthHours = getGlobalMonthlyHours(workers, monthId, clock, siteSettings);
   const dashboardMissingWorkers = getDashboardMissingWorkers(workers, t, language, clock);
   const siteHealth = siteDefinitions
-    .map((site) => ({ site, metrics: getSiteMetrics(workers, site.id, clock) }))
+    .map((site) => ({ site, metrics: getSiteMetrics(workers, site.id, clock, siteSettings) }))
     .sort((left, right) => right.metrics.missing - left.metrics.missing || left.metrics.attendance - right.metrics.attendance);
   const attentionSites = siteHealth.filter(({ metrics }) => metrics.missing > 0);
-  const attentionWorkers = getAttentionWorkers(workers, t, language).slice(0, 5);
-  const recentActivity = getRecentActivity(workers, t, language);
+  const attentionWorkers = getAttentionWorkers(workers, t, language, siteSettings).slice(0, 5);
+  const recentActivity = getRecentActivity(workers, t, language, siteSettings);
 
   return (
     <section className="admin-page admin-dashboard-page">
@@ -1746,6 +1985,258 @@ function AdminSettingsView({ t, gpsSettings, onSaveGpsSettings }) {
   );
 }
 
+function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
+  const [selectedSiteId, setSelectedSiteId] = useState(DEMO_WORKER_SITE_ID);
+  const selectedSite = siteDefinitions.find((site) => site.id === selectedSiteId) || siteDefinitions[0];
+  const selectedSiteSetting = getSiteSetting(siteSettings, selectedSiteId);
+  const [draft, setDraft] = useState(selectedSiteSetting);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [testState, setTestState] = useState({ status: "idle" });
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [addressStatus, setAddressStatus] = useState("");
+  const [isAddressSearching, setIsAddressSearching] = useState(false);
+
+  useEffect(() => {
+    setDraft(selectedSiteSetting);
+    setSaveMessage("");
+    setTestState({ status: "idle" });
+    setAddressSuggestions([]);
+    setAddressStatus("");
+  }, [selectedSiteId, siteSettings]);
+
+  const updateDraft = (field, value) => {
+    setDraft((current) => ({ ...current, [field]: value }));
+    setSaveMessage("");
+    if (field === "siteAddress") setAddressStatus("");
+  };
+
+  useEffect(() => {
+    const query = String(draft.siteAddress || "").trim();
+    if (query.length < 3) {
+      setAddressSuggestions([]);
+      return undefined;
+    }
+
+    let isCancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const suggestions = await searchAddressSuggestions(query);
+        if (!isCancelled) setAddressSuggestions(suggestions.slice(0, 5));
+      } catch {
+        if (!isCancelled) setAddressSuggestions([]);
+      }
+    }, 450);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [draft.siteAddress]);
+
+  const applyGeocodeResult = (result) => {
+    setDraft((current) => ({
+      ...current,
+      siteAddress: result.address || result.description || current.siteAddress,
+      latitude: Number(result.latitude).toFixed(6),
+      longitude: Number(result.longitude).toFixed(6),
+    }));
+    setAddressSuggestions([]);
+    setAddressStatus(t.addressUpdated);
+    setSaveMessage("");
+  };
+
+  const handleFindCoordinates = async (address = draft.siteAddress) => {
+    const query = String(address || "").trim();
+    if (query.length < 3) {
+      setAddressStatus(t.addressNotFound);
+      return;
+    }
+
+    setIsAddressSearching(true);
+    setAddressStatus(t.searchingAddress);
+
+    try {
+      const result = await geocodeAddress(query);
+      applyGeocodeResult(result);
+    } catch {
+      setAddressStatus(t.addressNotFound);
+    } finally {
+      setIsAddressSearching(false);
+    }
+  };
+
+  const handleSuggestionClick = async (suggestion) => {
+    if (Number.isFinite(suggestion.latitude) && Number.isFinite(suggestion.longitude)) {
+      applyGeocodeResult(suggestion);
+      return;
+    }
+
+    await handleFindCoordinates(suggestion.description);
+  };
+
+  const getValidatedDraft = () => {
+    const nextSettings = normalizeSiteSetting(selectedSiteId, draft);
+    if (!hasValidSiteSettings(nextSettings)) return null;
+    return nextSettings;
+  };
+
+  const handleSave = (event) => {
+    event.preventDefault();
+    const nextSettings = getValidatedDraft();
+    if (!nextSettings) {
+      setSaveMessage(t.siteSettingsInvalid || t.gpsSettingsInvalid);
+      return;
+    }
+    onSaveSiteSettings(selectedSiteId, nextSettings);
+    setDraft(nextSettings);
+    setSaveMessage(t.settingsSaved);
+  };
+
+  const handleTestLocation = async () => {
+    const nextSettings = getValidatedDraft();
+    if (!nextSettings) {
+      setTestState({ status: "error", message: t.siteSettingsInvalid || t.gpsSettingsInvalid });
+      return;
+    }
+
+    setTestState({ status: "checking", message: t.checkingLocation });
+
+    try {
+      const currentLocation = await getCurrentLocation();
+      const distanceMeters = calculateDistanceMeters(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        nextSettings.latitude,
+        nextSettings.longitude,
+      );
+      const isInside = distanceMeters <= nextSettings.radiusMeters;
+
+      setTestState({
+        status: isInside ? "success" : "error",
+        currentLocation,
+        distanceMeters,
+        isInside,
+        settings: nextSettings,
+      });
+    } catch (error) {
+      setTestState({
+        status: "error",
+        message: error?.code === 1 ? t.locationPermissionRequired : t.locationUnavailable,
+      });
+    }
+  };
+
+  return (
+    <section className="admin-page admin-settings-page">
+      <PageTitle title={t.settings} subtitle={t.gpsSettingsSubtitle} />
+      <section className="gps-settings-card site-settings-card">
+        <div className="panel-heading">
+          <small>{t.settings}</small>
+          <h2>{t.siteSettings || t.siteGpsSettings}</h2>
+          <p>{t.gpsTestIntro}</p>
+          <p className="gps-provider-note">{hasGoogleMapsApiKey() ? t.googleMapsReady : t.googleMapsFallback}</p>
+        </div>
+        <form className="gps-settings-form" onSubmit={handleSave}>
+          <label className="site-settings-selector">
+            <span>{t.selectSite}</span>
+            <select value={selectedSiteId} onChange={(event) => setSelectedSiteId(event.target.value)}>
+              {siteDefinitions.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>{t.siteName}</span>
+            <input value={draft.siteName || selectedSite.name} onChange={(event) => updateDraft("siteName", event.target.value)} />
+          </label>
+          <label className="gps-address-field">
+            <span>{t.siteAddress}</span>
+            <input
+              value={draft.siteAddress || ""}
+              list="gps-address-suggestions"
+              onBlur={() => handleFindCoordinates()}
+              onChange={(event) => updateDraft("siteAddress", event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleFindCoordinates();
+                }
+              }}
+            />
+            <datalist id="gps-address-suggestions">
+              {addressSuggestions.map((suggestion) => (
+                <option key={suggestion.id || suggestion.description} value={suggestion.description} />
+              ))}
+            </datalist>
+          </label>
+          {addressSuggestions.length ? (
+            <div className="gps-address-suggestions" aria-label={t.addressSuggestions}>
+              {addressSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.id || suggestion.description}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                >
+                  {suggestion.description}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <label>
+            <span>{t.latitude}</span>
+            <input type="number" step="any" value={draft.latitude} onChange={(event) => updateDraft("latitude", event.target.value)} />
+          </label>
+          <label>
+            <span>{t.longitude}</span>
+            <input type="number" step="any" value={draft.longitude} onChange={(event) => updateDraft("longitude", event.target.value)} />
+          </label>
+          <label>
+            <span>{t.allowedRadiusMeters}</span>
+            <input type="number" min="1" step="1" value={draft.radiusMeters} onChange={(event) => updateDraft("radiusMeters", event.target.value)} />
+          </label>
+          <label>
+            <span>{t.workDayStartTime}</span>
+            <input type="time" value={draft.workDayStartTime} onChange={(event) => updateDraft("workDayStartTime", event.target.value)} />
+          </label>
+          <label>
+            <span>{t.workDayEndTime}</span>
+            <input type="time" value={draft.workDayEndTime} onChange={(event) => updateDraft("workDayEndTime", event.target.value)} />
+          </label>
+          <label className="site-settings-rule">
+            <span>{t.roundingRules}</span>
+            <select value={draft.roundingRule || DEFAULT_ROUNDING_RULE} onChange={(event) => updateDraft("roundingRule", event.target.value)}>
+              <option value={DEFAULT_ROUNDING_RULE}>{t.roundingRulesDescription}</option>
+            </select>
+          </label>
+          <div className="gps-settings-actions">
+            <button type="submit">{t.saveSiteSettings || t.saveSettings}</button>
+            <button type="button" onClick={() => handleFindCoordinates()} disabled={isAddressSearching}>{isAddressSearching ? t.searchingAddress : t.findCoordinates}</button>
+            <button type="button" onClick={handleTestLocation}>{testState.status === "checking" ? t.checkingLocation : t.testCurrentLocation}</button>
+          </div>
+          {addressStatus ? <p className="gps-address-status" role="status">{addressStatus}</p> : null}
+          {saveMessage ? <p className="gps-save-message" role="status">{saveMessage}</p> : null}
+        </form>
+        {testState.status !== "idle" ? (
+          <section className={`gps-test-result ${testState.status}`} aria-live="polite">
+            {testState.message ? <p>{testState.message}</p> : (
+              <>
+                <strong>{testState.isInside ? t.insideAllowedRadius : t.outsideAllowedRadius}</strong>
+                <dl>
+                  <div><dt>{t.currentLatitude}</dt><dd>{testState.currentLocation.latitude.toFixed(6)}</dd></div>
+                  <div><dt>{t.currentLongitude}</dt><dd>{testState.currentLocation.longitude.toFixed(6)}</dd></div>
+                  <div><dt>{t.siteLatitude}</dt><dd>{testState.settings.latitude}</dd></div>
+                  <div><dt>{t.siteLongitude}</dt><dd>{testState.settings.longitude}</dd></div>
+                  <div><dt>{t.distanceFromSite}</dt><dd>{formatDistanceMeters(testState.distanceMeters)} m</dd></div>
+                  <div><dt>{t.allowedRadius}</dt><dd>{formatDistanceMeters(testState.settings.radiusMeters)} m</dd></div>
+                </dl>
+              </>
+            )}
+          </section>
+        ) : null}
+      </section>
+    </section>
+  );
+}
+
 function SiteHealthCard({ site, metrics, t, onOpen }) {
   return (
     <article className="site-health-card">
@@ -1806,11 +2297,12 @@ function AdminTableFrame({ children, compact = false }) {
   );
 }
 
-function AdminSiteWorkersView({ t, language, siteId, workers, clock, onBack, onUpdateWorker, onOpenWorker }) {
+function AdminSiteWorkersView({ t, language, siteId, workers, clock, siteSettings, onBack, onUpdateWorker, onOpenWorker }) {
   const todayDate = getTodayDate(clock);
   const site = siteDefinitions.find((item) => item.id === siteId);
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId && isSameDate(worker.date || todayDate, todayDate));
-  const metrics = getSiteMetrics(workers, siteId, clock);
+  const siteSetting = getSiteSetting(siteSettings, siteId);
+  const metrics = getSiteMetrics(workers, siteId, clock, siteSettings);
   return (
     <section className="admin-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
@@ -1830,7 +2322,7 @@ function AdminSiteWorkersView({ t, language, siteId, workers, clock, onBack, onU
                 <td>{worker.date}</td><td>{getWorkerFullName(worker)}</td><td>{worker.passport}</td><td>{getCountryLabel(worker.country, language)}</td>
                 <td><input type="time" value={worker.entry} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdateWorker(worker.id, "entry", event.target.value)} /></td>
                 <td><input type="time" value={worker.exit} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdateWorker(worker.id, "exit", event.target.value)} /></td>
-                <td>{getRecordTotal(worker) || "-"}</td>
+                <td>{getRecordTotal(worker, siteSetting) || "-"}</td>
                 <td>
                   <select value={worker.status} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdateWorker(worker.id, "status", event.target.value)}>
                     <option value="">{t.present}</option>
@@ -1846,11 +2338,12 @@ function AdminSiteWorkersView({ t, language, siteId, workers, clock, onBack, onU
   );
 }
 
-function AdminWorkerHistoryView({ t, language, worker, siteId, clock, onBack }) {
+function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettings, onBack }) {
   const site = siteDefinitions.find((item) => item.id === siteId);
-  const history = getDemoWorkerHistory(worker, { includeToday: true, referenceDate: clock });
+  const siteSetting = getSiteSetting(siteSettings, worker?.siteId || siteId);
+  const history = getDemoWorkerHistory(worker, { includeToday: true, referenceDate: clock, siteSettings });
   const fullName = getWorkerFullName(worker);
-  const monthlyTotal = getMonthlyHoursForWorker(worker, getDefaultReportMonthId(clock));
+  const monthlyTotal = getMonthlyHoursForWorker(worker, getDefaultReportMonthId(clock), clock, siteSettings);
   return (
     <section className="admin-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
@@ -1865,14 +2358,14 @@ function AdminWorkerHistoryView({ t, language, worker, siteId, clock, onBack }) 
       <AdminTableFrame>
         <table className="admin-table">
           <thead><tr><th>{t.date}</th><th>{t.entry}</th><th>{t.exit}</th><th>{t.totalHours}</th><th>{t.statusReason}</th></tr></thead>
-          <tbody>{history.map((record) => <tr className={record.status ? "status-alert-row" : ""} key={record.date}><td>{record.date}</td><td>{record.entry || "-"}</td><td>{record.exit || "-"}</td><td>{getRecordTotal(record) || "-"}</td><td>{getStatusLabel(record.status, language, t)}</td></tr>)}</tbody>
+          <tbody>{history.map((record) => <tr className={record.status ? "status-alert-row" : ""} key={record.date}><td>{record.date}</td><td>{record.entry || "-"}</td><td>{record.exit || "-"}</td><td>{getRecordTotal(record, siteSetting) || "-"}</td><td>{getStatusLabel(record.status, language, t)}</td></tr>)}</tbody>
         </table>
       </AdminTableFrame>
     </section>
   );
 }
 
-function AdminReportsView({ t, language, workers, selectedMonth, clock, onMonthChange, onOpenSite }) {
+function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSettings, onMonthChange, onOpenSite }) {
   const [reportMode, setReportMode] = useState("daily");
   const reportMonths = getReportMonths(clock);
   const rangeLabel = getReportRangeLabel(selectedMonth, clock);
@@ -1906,8 +2399,8 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, onMonthC
       </section>
       <div className="report-selector-grid">
         {siteDefinitions.map((site) => {
-          const metrics = getSiteMetrics(workers, site.id, clock);
-          const monthlyHours = getSiteMonthlyHours(workers, site.id, selectedMonth);
+          const metrics = getSiteMetrics(workers, site.id, clock, siteSettings);
+          const monthlyHours = getSiteMonthlyHours(workers, site.id, selectedMonth, clock, siteSettings);
           return (
             <article className="report-selector-card" key={site.id}>
               <div className="report-selector-main">
@@ -1948,17 +2441,18 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, onMonthC
   );
 }
 
-function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, clock, onMonthChange, onOpenWorker, onBack }) {
+function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, clock, siteSettings, onMonthChange, onOpenWorker, onBack }) {
   const [reportMode, setReportMode] = useState("daily");
   const reportMonths = getReportMonths(clock);
   const site = siteDefinitions.find((item) => item.id === siteId);
   const todayDate = getTodayDate(clock);
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId && isSameDate(worker.date || todayDate, todayDate));
-  const siteTotal = getSiteMonthlyHours(workers, siteId, selectedMonth);
-  const metrics = getSiteMetrics(workers, siteId, clock);
+  const siteSetting = getSiteSetting(siteSettings, siteId);
+  const siteTotal = getSiteMonthlyHours(workers, siteId, selectedMonth, clock, siteSettings);
+  const metrics = getSiteMetrics(workers, siteId, clock, siteSettings);
   const dailyRows = getDailyReportDates(selectedMonth, clock).flatMap((date) =>
     siteWorkers.map((worker) => {
-      const record = getReportRowsForWorker(worker, selectedMonth).find((item) => isSameDate(item.date, date));
+      const record = getReportRowsForWorker(worker, selectedMonth, clock, siteSettings).find((item) => isSameDate(item.date, date));
       return { worker, record: record || { date, entry: "", exit: "", status: "" } };
     }),
   );
@@ -2000,7 +2494,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
             <tbody>
               {dailyRows.map(({ worker, record }) => (
                 <tr className={record.status ? "status-alert-row" : ""} key={`${worker.id}-${record.date}`} onClick={() => onOpenWorker(worker.id)}>
-                  <td>{record.date}</td><td>{getWorkerFullName(worker)}</td><td>{worker.passport}</td><td>{getCountryLabel(worker.country, language)}</td><td>{record.entry || "-"}</td><td>{record.exit || "-"}</td><td>{getRecordTotal(record) || "-"}</td><td>{getStatusLabel(record.status, language, t)}</td>
+                  <td>{record.date}</td><td>{getWorkerFullName(worker)}</td><td>{worker.passport}</td><td>{getCountryLabel(worker.country, language)}</td><td>{record.entry || "-"}</td><td>{record.exit || "-"}</td><td>{getRecordTotal(record, siteSetting) || "-"}</td><td>{getStatusLabel(record.status, language, t)}</td>
                 </tr>
               ))}
             </tbody>
@@ -2014,7 +2508,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
             </thead>
             <tbody>
               {siteWorkers.map((worker) => {
-                const summary = getWorkerMonthlySummary(worker, t, language, selectedMonth);
+                const summary = getWorkerMonthlySummary(worker, t, language, selectedMonth, clock, siteSettings);
                 return (
                   <tr className={worker.status ? "status-alert-row" : ""} key={worker.id} onClick={() => onOpenWorker(worker.id)}>
                     <td>{getWorkerFullName(worker)}</td><td>{worker.passport}</td><td>{getCountryLabel(worker.country, language)}</td><td>{summary.daysWorked}</td><td>{summary.missingDays}</td><td>{summary.totalHours}</td>
@@ -2029,13 +2523,13 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
   );
 }
 
-function AdminProjectsView({ t, language, workers, onOpenSite }) {
+function AdminProjectsView({ t, language, workers, siteSettings, onOpenSite }) {
   return (
     <section className="admin-page sites-management-page">
       <PageTitle title={t.sites} subtitle={t.projectsSubtitle} />
       <div className="project-list">
         {siteDefinitions.map((site) => {
-          const metrics = getSiteMetrics(workers, site.id);
+          const metrics = getSiteMetrics(workers, site.id, new Date(), siteSettings);
           return (
             <article className="project-card" key={site.id}>
               <div className="project-image-wrap">
@@ -2053,29 +2547,50 @@ function AdminProjectsView({ t, language, workers, onOpenSite }) {
   );
 }
 
-function getDemoWorkerHistory(worker, { includeToday = false, referenceDate = new Date() } = {}) {
+function getDemoWorkerHistory(worker, { includeToday = false, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap() } = {}) {
   const seed = worker?.id || 1;
   const todayDate = getTodayDate(referenceDate);
+  const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
   const dates = getCurrentMonthDates(referenceDate).filter((date) => includeToday || !isSameDate(date, todayDate));
   return dates.map((date, index) => {
-    if (isSameDate(date, todayDate) && worker) return { date, entry: worker.entry, exit: worker.exit, status: worker.status };
+    if (isSameDate(date, todayDate) && worker) {
+      return applyAttendanceRules({
+        date,
+        siteId: worker.siteId,
+        actualEntryTime: worker.actualEntryTime || worker.entry,
+        actualExitTime: worker.actualExitTime || worker.exit,
+        entry: worker.entry,
+        exit: worker.exit,
+        status: worker.status,
+      }, siteSetting);
+    }
     if ((seed + index) % 7 === 0) return { date, entry: "", exit: "", status: "אי הגעה" };
     if ((seed + index) % 11 === 0) return { date, entry: "", exit: "", status: "מחלה" };
     const times = getDeterministicAttendance(seed, index);
-    return { date, entry: times.entry, exit: times.exit, status: "" };
+    return applyAttendanceRules({
+      date,
+      siteId: worker?.siteId,
+      actualEntryTime: times.entry,
+      actualExitTime: times.exit,
+      entry: times.entry,
+      exit: times.exit,
+      status: "",
+    }, siteSetting);
   });
 }
 
-function getMonthlyHoursForWorker(worker, monthId = getDefaultReportMonthId()) {
-  const minutes = getReportRowsForWorker(worker, monthId).reduce((sum, record) => sum + (getRecordMinutes(record) || 0), 0);
+function getMonthlyHoursForWorker(worker, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
+  const minutes = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0);
   return formatMinutes(minutes);
 }
 
-function getSiteMonthlyHours(workers, siteId, monthId = getDefaultReportMonthId()) {
+function getSiteMonthlyHours(workers, siteId, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const siteSetting = getSiteSetting(siteSettings, siteId);
   const minutes = workers
     .filter((worker) => worker.siteId === siteId)
     .reduce((sum, worker) => {
-      return sum + getReportRowsForWorker(worker, monthId).reduce((recordSum, record) => recordSum + (getRecordMinutes(record) || 0), 0);
+      return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
     }, 0);
   return formatMinutes(minutes);
 }

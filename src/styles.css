@@ -6987,7 +6987,8 @@ select:focus-visible {
   grid-column: span 2;
 }
 
-.gps-settings-form input {
+.gps-settings-form input,
+.gps-settings-form select {
   width: 100%;
   height: 48px;
   padding: 0 14px;
@@ -7000,9 +7001,27 @@ select:focus-visible {
   outline: none;
 }
 
-.gps-settings-form input:focus {
+.gps-settings-form select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #52647d 50%), linear-gradient(135deg, #52647d 50%, transparent 50%);
+  background-position: calc(100% - 18px) 20px, calc(100% - 12px) 20px;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+[dir="rtl"] .gps-settings-form select {
+  background-position: 18px 20px, 12px 20px;
+}
+
+.gps-settings-form input:focus,
+.gps-settings-form select:focus {
   border-color: #8db3ff;
   box-shadow: 0 0 0 4px rgba(7, 87, 243, 0.12);
+}
+
+.site-settings-selector,
+.site-settings-rule {
+  grid-column: 1 / -1;
 }
 
 .gps-settings-actions {
