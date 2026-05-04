@@ -599,25 +599,26 @@ function getDefaultSiteSettingsMap() {
 }
 
 function normalizeSiteSetting(siteId = DEMO_WORKER_SITE_ID, settings = {}) {
+  const safeSettings = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
   const site = siteDefinitions.find((item) => item.id === siteId) || siteDefinitions[0];
   const defaults = getDefaultSiteSettingsForSite(site);
-  const latitude = Number(settings.latitude);
-  const longitude = Number(settings.longitude);
-  const radiusMeters = Number(settings.radiusMeters);
-  const roundingToleranceMinutes = Number(settings.roundingToleranceMinutes);
+  const latitude = Number(safeSettings.latitude);
+  const longitude = Number(safeSettings.longitude);
+  const radiusMeters = Number(safeSettings.radiusMeters);
+  const roundingToleranceMinutes = Number(safeSettings.roundingToleranceMinutes);
 
   return {
     ...defaults,
-    ...settings,
+    ...safeSettings,
     siteId: site.id,
-    siteName: settings.siteName || defaults.siteName,
-    siteAddress: settings.siteAddress || defaults.siteAddress,
+    siteName: safeSettings.siteName || defaults.siteName,
+    siteAddress: safeSettings.siteAddress || defaults.siteAddress,
     latitude: Number.isFinite(latitude) ? latitude : defaults.latitude,
     longitude: Number.isFinite(longitude) ? longitude : defaults.longitude,
     radiusMeters: Number.isFinite(radiusMeters) && radiusMeters > 0 ? radiusMeters : defaults.radiusMeters,
-    workDayStartTime: normalizeTimeValue(settings.workDayStartTime, defaults.workDayStartTime),
-    workDayEndTime: normalizeTimeValue(settings.workDayEndTime, defaults.workDayEndTime),
-    roundingRule: settings.roundingRule || DEFAULT_ROUNDING_RULE,
+    workDayStartTime: normalizeTimeValue(safeSettings.workDayStartTime, defaults.workDayStartTime),
+    workDayEndTime: normalizeTimeValue(safeSettings.workDayEndTime, defaults.workDayEndTime),
+    roundingRule: safeSettings.roundingRule || DEFAULT_ROUNDING_RULE,
     roundingToleranceMinutes: ROUNDING_TOLERANCE_OPTIONS.includes(roundingToleranceMinutes)
       ? roundingToleranceMinutes
       : defaults.roundingToleranceMinutes,
@@ -655,18 +656,20 @@ function getSiteSetting(siteSettings, siteId = DEMO_WORKER_SITE_ID) {
 }
 
 function getGpsSiteLocation(siteSetting) {
+  const safeSiteSetting = normalizeSiteSetting(siteSetting?.siteId || DEMO_WORKER_SITE_ID, siteSetting);
   return {
-    latitude: Number(siteSetting.latitude),
-    longitude: Number(siteSetting.longitude),
+    latitude: Number(safeSiteSetting.latitude),
+    longitude: Number(safeSiteSetting.longitude),
   };
 }
 
 function hasValidSiteSettings(siteSetting) {
-  const { latitude, longitude } = getGpsSiteLocation(siteSetting);
-  const radiusMeters = Number(siteSetting.radiusMeters);
-  const startMinutes = timeToMinutes(siteSetting.workDayStartTime);
-  const endMinutes = timeToMinutes(siteSetting.workDayEndTime);
-  const roundingToleranceMinutes = Number(siteSetting.roundingToleranceMinutes);
+  const safeSiteSetting = normalizeSiteSetting(siteSetting?.siteId || DEMO_WORKER_SITE_ID, siteSetting);
+  const { latitude, longitude } = getGpsSiteLocation(safeSiteSetting);
+  const radiusMeters = Number(safeSiteSetting.radiusMeters);
+  const startMinutes = timeToMinutes(safeSiteSetting.workDayStartTime);
+  const endMinutes = timeToMinutes(safeSiteSetting.workDayEndTime);
+  const roundingToleranceMinutes = Number(safeSiteSetting.roundingToleranceMinutes);
   return (
     Number.isFinite(latitude) &&
     Number.isFinite(longitude) &&
@@ -2131,6 +2134,14 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
     } finally {
       setIsAddressSearching(false);
     }
+  };
+
+  const handleCancel = () => {
+    setDraft(selectedSiteSetting);
+    setSaveMessage("");
+    setAddressStatus("");
+    setAddressSuggestions([]);
+    setTestState({ status: "idle" });
   };
 
   const handleSuggestionClick = async (suggestion) => {
