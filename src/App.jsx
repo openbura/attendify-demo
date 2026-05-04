@@ -198,8 +198,11 @@ const translations = {
     workHours: "Work hours",
     gpsRadiusHelp: "Set how far from the site workers are allowed to check in.",
     useCurrentLocationAsSiteLocation: "Use current location as site location",
-    currentLocationAddedToSiteSettings: "Current location was added to the site settings. Click Save settings to apply.",
+    currentLocationSetupHint: "Use this while physically standing at the site to set the site location from your current GPS position.",
+    detectingCurrentLocation: "Detecting current location...",
+    currentLocationAddedToSiteSettings: "Current location filled in. Click Save settings to save.",
     currentLocationPermissionRequired: "Location permission is required to use current location.",
+    geolocationNotSupported: "This browser does not support location detection.",
     currentLocationUnavailable: "Could not detect current location.",
     saveSiteSettings: "Save site settings",
     saveSettings: "Save settings",
@@ -530,8 +533,11 @@ Object.assign(translations.he, {
   workHours: "שעות עבודה",
   gpsRadiusHelp: "הגדר באיזה מרחק מהאתר עובדים יכולים לבצע כניסה.",
   useCurrentLocationAsSiteLocation: "השתמש במיקום הנוכחי כמיקום האתר",
-  currentLocationAddedToSiteSettings: "המיקום הנוכחי נוסף להגדרות האתר. לחץ שמור הגדרות כדי להחיל.",
+  currentLocationSetupHint: "לחץ כשאתה נמצא פיזית באתר, כדי להגדיר את מיקום האתר לפי המיקום הנוכחי שלך.",
+  detectingCurrentLocation: "מזהה מיקום נוכחי...",
+  currentLocationAddedToSiteSettings: "המיקום הנוכחי הוזן לשדות. לחץ שמור הגדרות כדי לשמור.",
   currentLocationPermissionRequired: "נדרש אישור מיקום כדי להשתמש במיקום הנוכחי.",
+  geolocationNotSupported: "הדפדפן הזה לא תומך בזיהוי מיקום.",
   currentLocationUnavailable: "לא ניתן היה לזהות את המיקום הנוכחי.",
   saveSiteSettings: "שמור הגדרות אתר",
   saveSettings: "שמור הגדרות",
@@ -2018,12 +2024,14 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
   const [saveMessage, setSaveMessage] = useState("");
   const [addressStatus, setAddressStatus] = useState("");
   const [addressStatusType, setAddressStatusType] = useState("info");
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
   useEffect(() => {
     setDraft(selectedSiteSetting);
     setSaveMessage("");
     setAddressStatus("");
     setAddressStatusType("info");
+    setIsDetectingLocation(false);
   }, [selectedSiteId, siteSettings]);
 
   const updateDraft = (field, value) => {
@@ -2051,8 +2059,11 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
   };
 
   const handleUseCurrentLocation = async () => {
-    setAddressStatus(t.checkingLocation);
+    if (isDetectingLocation) return;
+    setIsDetectingLocation(true);
+    setAddressStatus(t.detectingCurrentLocation || t.checkingLocation);
     setAddressStatusType("info");
+    setSaveMessage("");
     try {
       const currentLocation = await getCurrentLocation();
       setDraft((current) => ({
@@ -2062,10 +2073,16 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
       }));
       setAddressStatus(t.currentLocationAddedToSiteSettings);
       setAddressStatusType("success");
-      setSaveMessage("");
     } catch (error) {
-      setAddressStatus(error?.code === 1 ? t.currentLocationPermissionRequired : t.currentLocationUnavailable);
+      const message = error?.code === 1
+        ? t.currentLocationPermissionRequired
+        : error?.code === 0
+          ? t.geolocationNotSupported || t.currentLocationUnavailable
+          : t.currentLocationUnavailable;
+      setAddressStatus(message);
       setAddressStatusType("error");
+    } finally {
+      setIsDetectingLocation(false);
     }
   };
 
@@ -2121,7 +2138,13 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
                 <input type="number" min="1" step="1" value={draft.radiusMeters} onChange={(event) => updateDraft("radiusMeters", event.target.value)} />
               </label>
             </div>
-            <button className="settings-action-secondary location-fill-button" type="button" onClick={handleUseCurrentLocation}>{t.useCurrentLocationAsSiteLocation}</button>
+            <div className="location-fill-row">
+              <button className="settings-action-secondary location-fill-button" type="button" onClick={handleUseCurrentLocation} disabled={isDetectingLocation}>
+                {isDetectingLocation ? (t.detectingCurrentLocation || t.checkingLocation) : t.useCurrentLocationAsSiteLocation}
+              </button>
+              <p className="location-fill-helper">{t.currentLocationSetupHint}</p>
+              {addressStatus ? <p className={`gps-address-status ${addressStatusType}`} role="status" aria-live="polite">{addressStatus}</p> : null}
+            </div>
           </section>
 
           <section className="settings-section-card">
@@ -2153,7 +2176,6 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
           <div className="gps-settings-actions">
             <button className="settings-action-primary" type="submit">{t.saveSettings}</button>
           </div>
-          {addressStatus ? <p className={`gps-address-status ${addressStatusType}`} role="status">{addressStatus}</p> : null}
           {saveMessage ? <p className="gps-save-message" role="status">{saveMessage}</p> : null}
         </form>
       </section>

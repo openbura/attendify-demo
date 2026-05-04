@@ -7479,6 +7479,24 @@ select:focus-visible {
   font-weight: 950 !important;
 }
 
+.location-fill-row {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.location-fill-helper {
+  max-width: 620px !important;
+  color: #51637b !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}
+
+.location-fill-button:disabled {
+  cursor: progress !important;
+  opacity: 0.78;
+}
+
 .site-settings-card .gps-settings-actions {
   justify-content: end;
 }
@@ -7508,6 +7526,10 @@ select:focus-visible {
   .location-fill-button {
     width: 100% !important;
     min-width: 0 !important;
+  }
+
+  .location-fill-row {
+    justify-items: stretch;
   }
 
   .site-settings-card .gps-settings-actions {
