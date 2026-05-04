@@ -10,6 +10,40 @@ export const DEFAULT_SITE_GPS_SETTINGS = {
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 let googleMapsPromise;
 
+const knownAddressCoordinates = [
+  {
+    keywords: ["עמק איילון 1", "כפר סבא", "emek ayalon 1", "kfar saba"],
+    address: "עמק איילון 1, כפר סבא",
+    latitude: 32.179343,
+    longitude: 34.931399,
+  },
+  {
+    keywords: ["דניה ווסט", "הוד השרון", "יונה וולך 10", "dania", "hod hasharon", "yona wallach"],
+    address: "יונה וולך 10, הוד השרון",
+    latitude: 32.159252,
+    longitude: 34.893785,
+  },
+  {
+    keywords: ["גולומב 38", "רמת השרון", "golomb 38", "ramat hasharon"],
+    address: "גולומב 38, רמת השרון",
+    latitude: 32.1467,
+    longitude: 34.8397,
+  },
+  {
+    keywords: ["פורמה", "תל אביב", "forma", "tel aviv"],
+    address: "תל אביב-יפו",
+    latitude: 32.0853,
+    longitude: 34.7818,
+  },
+];
+
+function findKnownAddress(query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  return knownAddressCoordinates.find((item) =>
+    item.keywords.some((keyword) => normalizedQuery.includes(keyword.toLowerCase())),
+  );
+}
+
 export function hasGoogleMapsApiKey() {
   return Boolean(GOOGLE_MAPS_API_KEY);
 }
@@ -70,6 +104,17 @@ function geocodeWithGoogle(geocoder, address) {
 }
 
 async function searchAddressSuggestionsWithNominatim(query) {
+  const knownAddress = findKnownAddress(query);
+  if (knownAddress) {
+    return [{
+      id: knownAddress.address,
+      description: knownAddress.address,
+      latitude: knownAddress.latitude,
+      longitude: knownAddress.longitude,
+      provider: "local",
+    }];
+  }
+
   const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=il&q=${encodeURIComponent(query)}`;
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) return [];
@@ -109,12 +154,27 @@ export async function geocodeAddress(address) {
   const trimmedAddress = address.trim();
   if (!trimmedAddress) throw new Error("Address is empty.");
 
+  const knownAddress = findKnownAddress(trimmedAddress);
+  if (knownAddress) {
+    return {
+      address: knownAddress.address,
+      latitude: knownAddress.latitude,
+      longitude: knownAddress.longitude,
+      provider: "local",
+    };
+  }
+
   const maps = await getGoogleMapsApi();
   if (maps?.Geocoder) {
     return geocodeWithGoogle(new maps.Geocoder(), trimmedAddress);
   }
 
-  const suggestions = await searchAddressSuggestionsWithNominatim(trimmedAddress);
+  let suggestions = [];
+  try {
+    suggestions = await searchAddressSuggestionsWithNominatim(trimmedAddress);
+  } catch {
+    suggestions = [];
+  }
   if (!suggestions[0] || !Number.isFinite(suggestions[0].latitude) || !Number.isFinite(suggestions[0].longitude)) {
     throw new Error("Address was not found.");
   }

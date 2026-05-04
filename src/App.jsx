@@ -35,6 +35,8 @@ const DEMO_WORKER_SITE_ID = "dania";
 const DEFAULT_WORK_DAY_START = "07:00";
 const DEFAULT_WORK_DAY_END = "19:00";
 const DEFAULT_ROUNDING_RULE = "site-day-cap";
+const DEFAULT_ROUNDING_TOLERANCE_MINUTES = 15;
+const ROUNDING_TOLERANCE_OPTIONS = [0, 10, 15, 20, 30];
 
 const fieldInitialState = { workerId: "", password: "" };
 
@@ -173,10 +175,16 @@ const translations = {
     allowedRadiusMeters: "Allowed radius in meters",
     workDayStartTime: "Work day start time",
     workDayEndTime: "Work day end time",
-    roundingRules: "Rounding rules for attendance",
-    roundingRulesDescription: "Early check-ins count from the start time. Late check-outs count until the end time.",
+    attendanceRounding: "Attendance rounding",
+    roundingRules: "Attendance rounding",
+    roundingTolerance: "Rounding tolerance",
+    roundingRulesDescription: "Choose how much tolerance is allowed around the site work hours before rounding entry/exit times for reports.",
+    noTolerance: "0 minutes",
+    minutesShort: "{minutes} minutes",
+    manualCoordinatesHint: "Enter coordinates manually or use current location.",
     saveSiteSettings: "Save site settings",
     saveSettings: "Save settings",
+    cancel: "Cancel",
     settingsSaved: "Settings saved",
     testCurrentLocation: "Test current location",
     currentLatitude: "Current latitude",
@@ -197,11 +205,11 @@ const translations = {
     siteSettingsInvalid: "Please enter valid site coordinates, radius, and work hours.",
     findCoordinates: "Find coordinates",
     searchingAddress: "Searching address...",
-    addressUpdated: "Address found. Coordinates updated.",
-    addressNotFound: "Could not find this address. Try a more specific address.",
+    addressUpdated: "Coordinates updated",
+    addressNotFound: "Could not find coordinates for this address. Please enter them manually.",
     addressSuggestions: "Address suggestions",
-    googleMapsReady: "Google Maps autocomplete is ready.",
-    googleMapsFallback: "Google Maps key is missing. Address lookup is using a simple fallback for now.",
+    googleMapsReady: "Address lookup is available.",
+    googleMapsFallback: "Enter coordinates manually or use current location.",
   },
   he: {},
   th: {},
@@ -490,10 +498,16 @@ Object.assign(translations.he, {
   allowedRadiusMeters: "רדיוס מותר במטרים",
   workDayStartTime: "שעת התחלת יום עבודה",
   workDayEndTime: "שעת סיום יום עבודה",
-  roundingRules: "כללי עיגול נוכחות",
-  roundingRulesDescription: "כניסה מוקדמת נספרת משעת ההתחלה. יציאה מאוחרת נספרת עד שעת הסיום.",
+  attendanceRounding: "עיגול שעות נוכחות",
+  roundingRules: "עיגול שעות נוכחות",
+  roundingTolerance: "טווח עיגול",
+  roundingRulesDescription: "בחר כמה דקות טווח מותרות סביב שעות העבודה באתר לפני עיגול שעות כניסה/יציאה בדוחות.",
+  noTolerance: "ללא טווח",
+  minutesShort: "{minutes} דקות",
+  manualCoordinatesHint: "אפשר להזין קואורדינטות ידנית או להשתמש במיקום הנוכחי.",
   saveSiteSettings: "שמור הגדרות אתר",
   saveSettings: "שמור הגדרות",
+  cancel: "ביטול",
   settingsSaved: "ההגדרות נשמרו",
   testCurrentLocation: "בדוק מיקום נוכחי",
   currentLatitude: "קו רוחב נוכחי",
@@ -514,11 +528,11 @@ Object.assign(translations.he, {
   siteSettingsInvalid: "יש להזין קואורדינטות, רדיוס ושעות עבודה תקינים.",
   findCoordinates: "מצא קואורדינטות",
   searchingAddress: "מחפש כתובת...",
-  addressUpdated: "הכתובת נמצאה. הקואורדינטות עודכנו.",
-  addressNotFound: "לא הצלחתי למצוא את הכתובת. נסה כתובת מלאה יותר.",
+  addressUpdated: "הקואורדינטות עודכנו",
+  addressNotFound: "לא נמצאו קואורדינטות לכתובת הזו. אפשר להזין אותן ידנית.",
   addressSuggestions: "הצעות כתובת",
-  googleMapsReady: "השלמת כתובת של Google Maps פעילה.",
-  googleMapsFallback: "חסר Google Maps API key. כרגע חיפוש הכתובת עובד במצב בדיקה פשוט.",
+  googleMapsReady: "חיפוש כתובת זמין.",
+  googleMapsFallback: "אפשר להזין קואורדינטות ידנית או להשתמש במיקום הנוכחי.",
 });
 
 function timeToMinutes(time) {
@@ -554,6 +568,12 @@ const defaultSiteCoordinates = {
   },
 };
 
+function getRoundingToleranceLabel(minutes, t) {
+  const value = Number(minutes);
+  if (!value) return t.noTolerance || "0 minutes";
+  return formatText(t.minutesShort || "{minutes} minutes", { minutes: value });
+}
+
 function normalizeTimeValue(value, fallback) {
   return timeToMinutes(value) === null ? fallback : value;
 }
@@ -570,6 +590,7 @@ function getDefaultSiteSettingsForSite(site) {
     workDayStartTime: DEFAULT_WORK_DAY_START,
     workDayEndTime: DEFAULT_WORK_DAY_END,
     roundingRule: DEFAULT_ROUNDING_RULE,
+    roundingToleranceMinutes: DEFAULT_ROUNDING_TOLERANCE_MINUTES,
   };
 }
 
@@ -583,6 +604,7 @@ function normalizeSiteSetting(siteId = DEMO_WORKER_SITE_ID, settings = {}) {
   const latitude = Number(settings.latitude);
   const longitude = Number(settings.longitude);
   const radiusMeters = Number(settings.radiusMeters);
+  const roundingToleranceMinutes = Number(settings.roundingToleranceMinutes);
 
   return {
     ...defaults,
@@ -596,6 +618,9 @@ function normalizeSiteSetting(siteId = DEMO_WORKER_SITE_ID, settings = {}) {
     workDayStartTime: normalizeTimeValue(settings.workDayStartTime, defaults.workDayStartTime),
     workDayEndTime: normalizeTimeValue(settings.workDayEndTime, defaults.workDayEndTime),
     roundingRule: settings.roundingRule || DEFAULT_ROUNDING_RULE,
+    roundingToleranceMinutes: ROUNDING_TOLERANCE_OPTIONS.includes(roundingToleranceMinutes)
+      ? roundingToleranceMinutes
+      : defaults.roundingToleranceMinutes,
   };
 }
 
@@ -641,6 +666,7 @@ function hasValidSiteSettings(siteSetting) {
   const radiusMeters = Number(siteSetting.radiusMeters);
   const startMinutes = timeToMinutes(siteSetting.workDayStartTime);
   const endMinutes = timeToMinutes(siteSetting.workDayEndTime);
+  const roundingToleranceMinutes = Number(siteSetting.roundingToleranceMinutes);
   return (
     Number.isFinite(latitude) &&
     Number.isFinite(longitude) &&
@@ -648,7 +674,8 @@ function hasValidSiteSettings(siteSetting) {
     radiusMeters > 0 &&
     startMinutes !== null &&
     endMinutes !== null &&
-    endMinutes > startMinutes
+    endMinutes > startMinutes &&
+    ROUNDING_TOLERANCE_OPTIONS.includes(roundingToleranceMinutes)
   );
 }
 
@@ -670,12 +697,18 @@ function getCalculatedAttendance(record, siteSetting = getSiteSetting(null)) {
   const exitMinutes = timeToMinutes(actualExitTime);
   const startMinutes = timeToMinutes(setting.workDayStartTime);
   const endMinutes = timeToMinutes(setting.workDayEndTime);
+  const toleranceMinutes = ROUNDING_TOLERANCE_OPTIONS.includes(Number(setting.roundingToleranceMinutes))
+    ? Number(setting.roundingToleranceMinutes)
+    : DEFAULT_ROUNDING_TOLERANCE_MINUTES;
 
   if (entryMinutes === null || startMinutes === null || endMinutes === null) {
     return { actualEntryTime, actualExitTime, calculatedEntryTime: "", calculatedExitTime: "", minutes: null };
   }
 
-  const calculatedEntryMinutes = Math.max(entryMinutes, startMinutes);
+  const calculatedEntryMinutes =
+    entryMinutes < startMinutes && startMinutes - entryMinutes > toleranceMinutes
+      ? startMinutes
+      : entryMinutes;
   if (exitMinutes === null) {
     return {
       actualEntryTime,
@@ -686,7 +719,10 @@ function getCalculatedAttendance(record, siteSetting = getSiteSetting(null)) {
     };
   }
 
-  const calculatedExitMinutes = Math.min(exitMinutes, endMinutes);
+  const calculatedExitMinutes =
+    exitMinutes > endMinutes && exitMinutes - endMinutes > toleranceMinutes
+      ? endMinutes
+      : exitMinutes;
   if (calculatedExitMinutes < calculatedEntryMinutes) {
     return {
       actualEntryTime,
@@ -973,6 +1009,30 @@ function getGlobalMonthlyHours(workers, monthId = getDefaultReportMonthId(), ref
     return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
   }, 0);
   return Math.round((minutes / 60) * 10) / 10;
+}
+
+function getSiteReportTotals(workers, siteId, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const siteWorkers = workers.filter((worker) => worker.siteId === siteId);
+  const totals = siteWorkers.reduce((siteTotals, worker) => {
+    const siteSetting = getSiteSetting(siteSettings, worker.siteId);
+    const records = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings);
+    const workedRecords = records.filter((record) => getRecordMinutes(record, siteSetting));
+    const missingRecords = records.filter((record) => !getRecordMinutes(record, siteSetting));
+    return {
+      daysWorked: siteTotals.daysWorked + workedRecords.length,
+      missingDays: siteTotals.missingDays + missingRecords.length,
+      minutes: siteTotals.minutes + records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0),
+    };
+  }, { daysWorked: 0, missingDays: 0, minutes: 0 });
+
+  const totalDays = totals.daysWorked + totals.missingDays;
+  return {
+    totalWorkers: siteWorkers.length,
+    daysWorked: totals.daysWorked,
+    missingDays: totals.missingDays,
+    monthlyHours: formatMinutes(totals.minutes),
+    attendance: totalDays ? Math.round((totals.daysWorked / totalDays) * 100) : 0,
+  };
 }
 
 function getAttentionWorkers(workers, t, language, siteSettings = getDefaultSiteSettingsMap()) {
@@ -1827,6 +1887,14 @@ function AdminSettingsView({ t, gpsSettings, onSaveGpsSettings }) {
     }
   };
 
+  const handleCancel = () => {
+    setDraft(selectedSiteSetting);
+    setSaveMessage("");
+    setAddressStatus("");
+    setAddressSuggestions([]);
+    setTestState({ status: "idle" });
+  };
+
   const handleSuggestionClick = async (suggestion) => {
     if (Number.isFinite(suggestion.latitude) && Number.isFinite(suggestion.longitude)) {
       applyGeocodeResult(suggestion);
@@ -2134,7 +2202,7 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
           <small>{t.settings}</small>
           <h2>{t.siteSettings || t.siteGpsSettings}</h2>
           <p>{t.gpsTestIntro}</p>
-          <p className="gps-provider-note">{hasGoogleMapsApiKey() ? t.googleMapsReady : t.googleMapsFallback}</p>
+          <p className="gps-provider-note">{t.manualCoordinatesHint}</p>
         </div>
         <form className="gps-settings-form" onSubmit={handleSave}>
           <label className="site-settings-selector">
@@ -2201,16 +2269,23 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
             <span>{t.workDayEndTime}</span>
             <input type="time" value={draft.workDayEndTime} onChange={(event) => updateDraft("workDayEndTime", event.target.value)} />
           </label>
+          <div className="site-settings-section-title">
+            <h3>{t.attendanceRounding || t.roundingRules}</h3>
+            <p>{t.roundingRulesDescription}</p>
+          </div>
           <label className="site-settings-rule">
-            <span>{t.roundingRules}</span>
-            <select value={draft.roundingRule || DEFAULT_ROUNDING_RULE} onChange={(event) => updateDraft("roundingRule", event.target.value)}>
-              <option value={DEFAULT_ROUNDING_RULE}>{t.roundingRulesDescription}</option>
+            <span>{t.roundingTolerance}</span>
+            <select value={draft.roundingToleranceMinutes ?? DEFAULT_ROUNDING_TOLERANCE_MINUTES} onChange={(event) => updateDraft("roundingToleranceMinutes", Number(event.target.value))}>
+              {ROUNDING_TOLERANCE_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>{getRoundingToleranceLabel(minutes, t)}</option>
+              ))}
             </select>
           </label>
           <div className="gps-settings-actions">
-            <button type="submit">{t.saveSiteSettings || t.saveSettings}</button>
-            <button type="button" onClick={() => handleFindCoordinates()} disabled={isAddressSearching}>{isAddressSearching ? t.searchingAddress : t.findCoordinates}</button>
-            <button type="button" onClick={handleTestLocation}>{testState.status === "checking" ? t.checkingLocation : t.testCurrentLocation}</button>
+            <button className="settings-action-primary" type="submit">{t.saveSettings}</button>
+            <button className="settings-action-secondary" type="button" onClick={() => handleFindCoordinates()} disabled={isAddressSearching}>{isAddressSearching ? t.searchingAddress : t.findCoordinates}</button>
+            <button className="settings-action-secondary" type="button" onClick={handleTestLocation}>{testState.status === "checking" ? t.checkingLocation : t.testCurrentLocation}</button>
+            <button className="settings-action-neutral" type="button" onClick={handleCancel}>{t.cancel}</button>
           </div>
           {addressStatus ? <p className="gps-address-status" role="status">{addressStatus}</p> : null}
           {saveMessage ? <p className="gps-save-message" role="status">{saveMessage}</p> : null}
@@ -2304,7 +2379,7 @@ function AdminSiteWorkersView({ t, language, siteId, workers, clock, siteSetting
   const siteSetting = getSiteSetting(siteSettings, siteId);
   const metrics = getSiteMetrics(workers, siteId, clock, siteSettings);
   return (
-    <section className="admin-page">
+    <section className="admin-page site-workers-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
       <PageTitle title={t.workersOnSite} subtitle={site.name} />
       <div className="admin-summary-strip">
@@ -2448,8 +2523,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
   const todayDate = getTodayDate(clock);
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId && isSameDate(worker.date || todayDate, todayDate));
   const siteSetting = getSiteSetting(siteSettings, siteId);
-  const siteTotal = getSiteMonthlyHours(workers, siteId, selectedMonth, clock, siteSettings);
-  const metrics = getSiteMetrics(workers, siteId, clock, siteSettings);
+  const reportTotals = getSiteReportTotals(workers, siteId, selectedMonth, clock, siteSettings);
   const dailyRows = getDailyReportDates(selectedMonth, clock).flatMap((date) =>
     siteWorkers.map((worker) => {
       const record = getReportRowsForWorker(worker, selectedMonth, clock, siteSettings).find((item) => isSameDate(item.date, date));
@@ -2458,9 +2532,9 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
   );
 
   return (
-    <section className="admin-page">
+    <section className="admin-page site-report-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
-      <PageTitle title={t.reports} subtitle={site.name} />
+      <PageTitle title={t.reports} subtitle={`${site.name} · ${getReportRangeLabel(selectedMonth, clock)}`} />
       <section className="report-detail-controls">
         <div className="report-tabs" role="tablist" aria-label={t.reports}>
           <button className={reportMode === "daily" ? "active" : ""} type="button" onClick={() => setReportMode("daily")}>{t.dailyReport}</button>
@@ -2480,10 +2554,11 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
         </div>
       </section>
       <section className="report-summary-card">
-        <Metric value={siteWorkers.length} label={t.totalWorkers} tone="blue" />
-        <Metric value={metrics.worked} label={t.arrivedToday} tone="green" />
-        <Metric value={metrics.missing} label={t.missingToday} tone="red" />
-        <Metric value={siteTotal} label={t.siteMonthlyTotal} tone="purple" />
+        <Metric value={reportTotals.totalWorkers} label={t.totalWorkers} tone="blue" />
+        <Metric value={reportTotals.daysWorked} label={t.daysWorked} tone="green" />
+        <Metric value={reportTotals.missingDays} label={t.missingDays} tone="red" />
+        <Metric value={`${reportTotals.attendance}%`} label={t.attendancePercent} tone="blue" />
+        <Metric value={reportTotals.monthlyHours} label={t.siteMonthlyTotal} tone="purple" />
       </section>
       {reportMode === "daily" ? (
         <AdminTableFrame>

@@ -7020,8 +7020,34 @@ select:focus-visible {
 }
 
 .site-settings-selector,
+.site-settings-section-title,
 .site-settings-rule {
   grid-column: 1 / -1;
+}
+
+.site-settings-section-title {
+  display: grid;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.site-settings-section-title h3,
+.site-settings-section-title p {
+  margin: 0;
+}
+
+.site-settings-section-title h3 {
+  color: var(--cx-ink);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.site-settings-section-title p {
+  max-width: 760px;
+  color: var(--cx-muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.4;
 }
 
 .gps-settings-actions {
@@ -7216,6 +7242,130 @@ select:focus-visible {
 .gps-settings-actions button:disabled {
   cursor: progress;
   opacity: 0.75;
+}
+
+/* Focused Settings + Reports separation pass */
+.site-settings-card .panel-heading {
+  display: grid;
+  align-items: start;
+  justify-content: stretch;
+}
+
+.site-settings-rule {
+  padding: 14px;
+  border: 1px solid rgba(7, 87, 243, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(7, 87, 243, 0.055), rgba(245, 189, 36, 0.055));
+}
+
+.site-settings-rule small {
+  color: var(--cx-muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.gps-settings-actions {
+  align-items: center;
+}
+
+.gps-settings-actions button {
+  min-width: 0 !important;
+  width: auto !important;
+  min-height: 42px !important;
+  padding: 0 16px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 24px rgba(7, 87, 243, 0.13) !important;
+  font-size: 14px !important;
+  font-weight: 950 !important;
+}
+
+.gps-settings-actions .settings-action-primary {
+  min-width: 150px !important;
+}
+
+.gps-settings-actions .settings-action-secondary {
+  border: 1px solid #cfe0ff !important;
+  background: #eef5ff !important;
+  color: #0b3f9f !important;
+}
+
+.gps-settings-actions .settings-action-neutral {
+  border: 1px solid #d6e2f2 !important;
+  background: #fff !important;
+  color: var(--cx-muted) !important;
+  box-shadow: none !important;
+}
+
+.site-workers-page .admin-page-title {
+  padding-inline-start: 12px;
+  border-inline-start: 5px solid var(--cx-yellow);
+}
+
+.site-workers-page .admin-table-shell {
+  border-color: rgba(245, 189, 36, 0.42);
+}
+
+.site-report-page {
+  gap: 16px;
+}
+
+.site-report-page .admin-page-title {
+  padding: 18px;
+  border: 1px solid rgba(7, 87, 243, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(7, 87, 243, 0.12), rgba(245, 189, 36, 0.08)),
+    rgba(255, 255, 255, 0.96);
+  box-shadow: var(--cx-shadow-md);
+}
+
+.site-report-page .report-detail-controls {
+  border-color: rgba(7, 87, 243, 0.16);
+  background:
+    linear-gradient(135deg, rgba(7, 87, 243, 0.07), transparent 45%),
+    #fff;
+}
+
+.site-report-page .report-summary-card {
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  border: 1px solid rgba(7, 87, 243, 0.14);
+}
+
+.site-report-page .admin-table-shell {
+  border: 1px solid rgba(7, 87, 243, 0.16);
+  box-shadow: 0 18px 42px rgba(10, 35, 80, 0.13);
+}
+
+.site-report-page .admin-table thead th {
+  background: #edf4ff;
+  color: #0b3f9f;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.site-report-page .admin-table tbody tr {
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .gps-settings-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gps-settings-actions button {
+    width: 100% !important;
+  }
+
+  .site-report-page .report-summary-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 430px) {
+  .gps-settings-actions {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 @media (max-width: 760px) {
