@@ -7368,6 +7368,154 @@ select:focus-visible {
   }
 }
 
+/* Focused Settings UX cleanup */
+.site-settings-card {
+  border-color: rgba(130, 158, 196, 0.28) !important;
+  background:
+    linear-gradient(135deg, rgba(7, 87, 243, 0.10), rgba(245, 189, 36, 0.035) 42%, rgba(239, 245, 252, 0.95)),
+    #edf4fb !important;
+}
+
+.site-settings-card .panel-heading {
+  padding: 16px;
+  border: 1px solid rgba(7, 87, 243, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.site-settings-card .gps-provider-note {
+  width: fit-content;
+  max-width: 100%;
+  background: rgba(231, 240, 252, 0.92);
+}
+
+.site-settings-card .gps-settings-form {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.settings-section-card {
+  display: grid;
+  gap: 13px;
+  padding: 16px;
+  border: 1px solid rgba(7, 87, 243, 0.13);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(242, 247, 253, 0.92)),
+    #f5f9fe;
+  box-shadow: 0 12px 28px rgba(10, 35, 80, 0.08);
+}
+
+.settings-section-card h3,
+.settings-section-card p {
+  margin: 0;
+}
+
+.settings-section-card h3 {
+  color: var(--cx-ink);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.settings-section-card p {
+  max-width: 780px;
+  color: var(--cx-muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.settings-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.settings-section-grid.two-columns {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.site-settings-selector-card {
+  background:
+    linear-gradient(135deg, rgba(7, 87, 243, 0.11), rgba(255, 255, 255, 0.88)),
+    #eef5ff;
+}
+
+.site-settings-selector select,
+.settings-section-card select {
+  border-color: #aec5e8 !important;
+  background-color: #eef5ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.site-settings-selector select:hover,
+.settings-section-card select:hover {
+  border-color: #7fa8ee !important;
+}
+
+.settings-section-card input {
+  background: #fbfdff !important;
+}
+
+.site-settings-rule {
+  border-color: rgba(245, 189, 36, 0.32) !important;
+  background:
+    linear-gradient(135deg, rgba(245, 189, 36, 0.12), rgba(7, 87, 243, 0.055)),
+    #f7fbff !important;
+}
+
+.location-fill-button {
+  justify-self: start;
+  width: auto !important;
+  min-width: 260px !important;
+  min-height: 42px !important;
+  padding: 0 16px !important;
+  border: 1px solid #cfe0ff !important;
+  border-radius: 8px !important;
+  background: #eef5ff !important;
+  color: #0b3f9f !important;
+  box-shadow: 0 12px 24px rgba(7, 87, 243, 0.12) !important;
+  font-size: 14px !important;
+  font-weight: 950 !important;
+}
+
+.site-settings-card .gps-settings-actions {
+  justify-content: end;
+}
+
+.site-settings-card .gps-settings-actions .settings-action-primary {
+  min-width: 150px !important;
+}
+
+.gps-address-status.success {
+  border-color: #bce8c5;
+  background: #ecfff0;
+  color: #087b20;
+}
+
+.gps-address-status.error {
+  border-color: #ffc7c7;
+  background: #fff1f1;
+  color: #b42318;
+}
+
+@media (max-width: 760px) {
+  .settings-section-grid,
+  .settings-section-grid.two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .location-fill-button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .site-settings-card .gps-settings-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+}
+
 @media (max-width: 760px) {
   .app-shell {
     place-items: start center !important;

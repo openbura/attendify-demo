@@ -55,6 +55,16 @@ const adminLanguages = [
   { code: "zh", enLabel: "Chinese", heLabel: "סינית", nativeLabel: "中文" },
 ];
 
+const languageNativeLabels = {
+  en: "English",
+  he: "עברית",
+  th: "ไทย",
+  ro: "Română",
+  hi: "हिन्दी",
+  si: "සිංහල",
+  zh: "中文",
+};
+
 const translations = {
   en: {
     subtitle: "Worker attendance system",
@@ -182,6 +192,15 @@ const translations = {
     noTolerance: "0 minutes",
     minutesShort: "{minutes} minutes",
     manualCoordinatesHint: "Enter coordinates manually or use current location.",
+    siteSelection: "Site selection",
+    siteIdentity: "Site identity",
+    gpsLocation: "GPS location",
+    workHours: "Work hours",
+    gpsRadiusHelp: "Set how far from the site workers are allowed to check in.",
+    useCurrentLocationAsSiteLocation: "Use current location as site location",
+    currentLocationAddedToSiteSettings: "Current location was added to the site settings. Click Save settings to apply.",
+    currentLocationPermissionRequired: "Location permission is required to use current location.",
+    currentLocationUnavailable: "Could not detect current location.",
     saveSiteSettings: "Save site settings",
     saveSettings: "Save settings",
     cancel: "Cancel",
@@ -500,11 +519,20 @@ Object.assign(translations.he, {
   workDayEndTime: "שעת סיום יום עבודה",
   attendanceRounding: "עיגול שעות נוכחות",
   roundingRules: "עיגול שעות נוכחות",
-  roundingTolerance: "טווח עיגול",
+  roundingTolerance: "טווח עיגול שעות",
   roundingRulesDescription: "בחר כמה דקות טווח מותרות סביב שעות העבודה באתר לפני עיגול שעות כניסה/יציאה בדוחות.",
   noTolerance: "ללא טווח",
   minutesShort: "{minutes} דקות",
   manualCoordinatesHint: "אפשר להזין קואורדינטות ידנית או להשתמש במיקום הנוכחי.",
+  siteSelection: "בחירת אתר",
+  siteIdentity: "פרטי האתר",
+  gpsLocation: "מיקום GPS",
+  workHours: "שעות עבודה",
+  gpsRadiusHelp: "הגדר באיזה מרחק מהאתר עובדים יכולים לבצע כניסה.",
+  useCurrentLocationAsSiteLocation: "השתמש במיקום הנוכחי כמיקום האתר",
+  currentLocationAddedToSiteSettings: "המיקום הנוכחי נוסף להגדרות האתר. לחץ שמור הגדרות כדי להחיל.",
+  currentLocationPermissionRequired: "נדרש אישור מיקום כדי להשתמש במיקום הנוכחי.",
+  currentLocationUnavailable: "לא ניתן היה לזהות את המיקום הנוכחי.",
   saveSiteSettings: "שמור הגדרות אתר",
   saveSettings: "שמור הגדרות",
   cancel: "ביטול",
@@ -868,9 +896,7 @@ function getInitialAdminLanguage() {
 }
 
 function getLanguageOptionLabel(item, currentLanguage, context) {
-  if (currentLanguage === "he") return item.heLabel;
-  if (context === "worker") return item.nativeLabel || item.enLabel;
-  return item.enLabel;
+  return languageNativeLabels[item.code] || item.nativeLabel || item.enLabel;
 }
 
 function getStoredAdminWorkers() {
@@ -1835,78 +1861,6 @@ function AdminSettingsView({ t, gpsSettings, onSaveGpsSettings }) {
     if (field === "siteAddress") setAddressStatus("");
   };
 
-  useEffect(() => {
-    const query = String(draft.siteAddress || "").trim();
-    if (query.length < 3) {
-      setAddressSuggestions([]);
-      return undefined;
-    }
-
-    let isCancelled = false;
-    const timer = window.setTimeout(async () => {
-      try {
-        const suggestions = await searchAddressSuggestions(query);
-        if (!isCancelled) setAddressSuggestions(suggestions.slice(0, 5));
-      } catch {
-        if (!isCancelled) setAddressSuggestions([]);
-      }
-    }, 450);
-
-    return () => {
-      isCancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [draft.siteAddress]);
-
-  const applyGeocodeResult = (result) => {
-    setDraft((current) => ({
-      ...current,
-      siteAddress: result.address || result.description || current.siteAddress,
-      latitude: Number(result.latitude).toFixed(6),
-      longitude: Number(result.longitude).toFixed(6),
-    }));
-    setAddressSuggestions([]);
-    setAddressStatus(t.addressUpdated);
-    setSaveMessage("");
-  };
-
-  const handleFindCoordinates = async (address = draft.siteAddress) => {
-    const query = String(address || "").trim();
-    if (query.length < 3) {
-      setAddressStatus(t.addressNotFound);
-      return;
-    }
-
-    setIsAddressSearching(true);
-    setAddressStatus(t.searchingAddress);
-
-    try {
-      const result = await geocodeAddress(query);
-      applyGeocodeResult(result);
-    } catch {
-      setAddressStatus(t.addressNotFound);
-    } finally {
-      setIsAddressSearching(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setDraft(selectedSiteSetting);
-    setSaveMessage("");
-    setAddressStatus("");
-    setAddressSuggestions([]);
-    setTestState({ status: "idle" });
-  };
-
-  const handleSuggestionClick = async (suggestion) => {
-    if (Number.isFinite(suggestion.latitude) && Number.isFinite(suggestion.longitude)) {
-      applyGeocodeResult(suggestion);
-      return;
-    }
-
-    await handleFindCoordinates(suggestion.description);
-  };
-
   const getValidatedDraft = () => {
     const latitude = Number(draft.latitude);
     const longitude = Number(draft.longitude);
@@ -2062,95 +2016,20 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
   const selectedSiteSetting = getSiteSetting(siteSettings, selectedSiteId);
   const [draft, setDraft] = useState(selectedSiteSetting);
   const [saveMessage, setSaveMessage] = useState("");
-  const [testState, setTestState] = useState({ status: "idle" });
-  const [addressSuggestions, setAddressSuggestions] = useState([]);
   const [addressStatus, setAddressStatus] = useState("");
-  const [isAddressSearching, setIsAddressSearching] = useState(false);
+  const [addressStatusType, setAddressStatusType] = useState("info");
 
   useEffect(() => {
     setDraft(selectedSiteSetting);
     setSaveMessage("");
-    setTestState({ status: "idle" });
-    setAddressSuggestions([]);
     setAddressStatus("");
+    setAddressStatusType("info");
   }, [selectedSiteId, siteSettings]);
 
   const updateDraft = (field, value) => {
     setDraft((current) => ({ ...current, [field]: value }));
     setSaveMessage("");
     if (field === "siteAddress") setAddressStatus("");
-  };
-
-  useEffect(() => {
-    const query = String(draft.siteAddress || "").trim();
-    if (query.length < 3) {
-      setAddressSuggestions([]);
-      return undefined;
-    }
-
-    let isCancelled = false;
-    const timer = window.setTimeout(async () => {
-      try {
-        const suggestions = await searchAddressSuggestions(query);
-        if (!isCancelled) setAddressSuggestions(suggestions.slice(0, 5));
-      } catch {
-        if (!isCancelled) setAddressSuggestions([]);
-      }
-    }, 450);
-
-    return () => {
-      isCancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [draft.siteAddress]);
-
-  const applyGeocodeResult = (result) => {
-    setDraft((current) => ({
-      ...current,
-      siteAddress: result.address || result.description || current.siteAddress,
-      latitude: Number(result.latitude).toFixed(6),
-      longitude: Number(result.longitude).toFixed(6),
-    }));
-    setAddressSuggestions([]);
-    setAddressStatus(t.addressUpdated);
-    setSaveMessage("");
-  };
-
-  const handleFindCoordinates = async (address = draft.siteAddress) => {
-    const query = String(address || "").trim();
-    if (query.length < 3) {
-      setAddressStatus(t.addressNotFound);
-      return;
-    }
-
-    setIsAddressSearching(true);
-    setAddressStatus(t.searchingAddress);
-
-    try {
-      const result = await geocodeAddress(query);
-      applyGeocodeResult(result);
-    } catch {
-      setAddressStatus(t.addressNotFound);
-    } finally {
-      setIsAddressSearching(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setDraft(selectedSiteSetting);
-    setSaveMessage("");
-    setAddressStatus("");
-    setAddressSuggestions([]);
-    setTestState({ status: "idle" });
-  };
-
-  const handleSuggestionClick = async (suggestion) => {
-    if (Number.isFinite(suggestion.latitude) && Number.isFinite(suggestion.longitude)) {
-      applyGeocodeResult(suggestion);
-      return;
-    }
-
-    await handleFindCoordinates(suggestion.description);
   };
 
   const getValidatedDraft = () => {
@@ -2171,37 +2050,22 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
     setSaveMessage(t.settingsSaved);
   };
 
-  const handleTestLocation = async () => {
-    const nextSettings = getValidatedDraft();
-    if (!nextSettings) {
-      setTestState({ status: "error", message: t.siteSettingsInvalid || t.gpsSettingsInvalid });
-      return;
-    }
-
-    setTestState({ status: "checking", message: t.checkingLocation });
-
+  const handleUseCurrentLocation = async () => {
+    setAddressStatus(t.checkingLocation);
+    setAddressStatusType("info");
     try {
       const currentLocation = await getCurrentLocation();
-      const distanceMeters = calculateDistanceMeters(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        nextSettings.latitude,
-        nextSettings.longitude,
-      );
-      const isInside = distanceMeters <= nextSettings.radiusMeters;
-
-      setTestState({
-        status: isInside ? "success" : "error",
-        currentLocation,
-        distanceMeters,
-        isInside,
-        settings: nextSettings,
-      });
+      setDraft((current) => ({
+        ...current,
+        latitude: currentLocation.latitude.toFixed(6),
+        longitude: currentLocation.longitude.toFixed(6),
+      }));
+      setAddressStatus(t.currentLocationAddedToSiteSettings);
+      setAddressStatusType("success");
+      setSaveMessage("");
     } catch (error) {
-      setTestState({
-        status: "error",
-        message: error?.code === 1 ? t.locationPermissionRequired : t.locationUnavailable,
-      });
+      setAddressStatus(error?.code === 1 ? t.currentLocationPermissionRequired : t.currentLocationUnavailable);
+      setAddressStatusType("error");
     }
   };
 
@@ -2216,108 +2080,82 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
           <p className="gps-provider-note">{t.manualCoordinatesHint}</p>
         </div>
         <form className="gps-settings-form" onSubmit={handleSave}>
-          <label className="site-settings-selector">
-            <span>{t.selectSite}</span>
-            <select value={selectedSiteId} onChange={(event) => setSelectedSiteId(event.target.value)}>
-              {siteDefinitions.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>{t.siteName}</span>
-            <input value={draft.siteName || selectedSite.name} onChange={(event) => updateDraft("siteName", event.target.value)} />
-          </label>
-          <label className="gps-address-field">
-            <span>{t.siteAddress}</span>
-            <input
-              value={draft.siteAddress || ""}
-              list="gps-address-suggestions"
-              onBlur={() => handleFindCoordinates()}
-              onChange={(event) => updateDraft("siteAddress", event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  handleFindCoordinates();
-                }
-              }}
-            />
-            <datalist id="gps-address-suggestions">
-              {addressSuggestions.map((suggestion) => (
-                <option key={suggestion.id || suggestion.description} value={suggestion.description} />
-              ))}
-            </datalist>
-          </label>
-          {addressSuggestions.length ? (
-            <div className="gps-address-suggestions" aria-label={t.addressSuggestions}>
-              {addressSuggestions.map((suggestion) => (
-                <button
-                  key={suggestion.id || suggestion.description}
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                >
-                  {suggestion.description}
-                </button>
-              ))}
+          <section className="settings-section-card site-settings-selector-card">
+            <h3>{t.siteSelection}</h3>
+            <label className="site-settings-selector">
+              <span>{t.selectSite}</span>
+              <select value={selectedSiteId} onChange={(event) => setSelectedSiteId(event.target.value)}>
+                {siteDefinitions.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+              </select>
+            </label>
+          </section>
+
+          <section className="settings-section-card">
+            <h3>{t.siteIdentity}</h3>
+            <div className="settings-section-grid">
+              <label>
+                <span>{t.siteName}</span>
+                <input value={draft.siteName || selectedSite.name} onChange={(event) => updateDraft("siteName", event.target.value)} />
+              </label>
+              <label>
+                <span>{t.siteAddress}</span>
+                <input value={draft.siteAddress || ""} onChange={(event) => updateDraft("siteAddress", event.target.value)} />
+              </label>
             </div>
-          ) : null}
-          <label>
-            <span>{t.latitude}</span>
-            <input type="number" step="any" value={draft.latitude} onChange={(event) => updateDraft("latitude", event.target.value)} />
-          </label>
-          <label>
-            <span>{t.longitude}</span>
-            <input type="number" step="any" value={draft.longitude} onChange={(event) => updateDraft("longitude", event.target.value)} />
-          </label>
-          <label>
-            <span>{t.allowedRadiusMeters}</span>
-            <input type="number" min="1" step="1" value={draft.radiusMeters} onChange={(event) => updateDraft("radiusMeters", event.target.value)} />
-          </label>
-          <label>
-            <span>{t.workDayStartTime}</span>
-            <input type="time" value={draft.workDayStartTime} onChange={(event) => updateDraft("workDayStartTime", event.target.value)} />
-          </label>
-          <label>
-            <span>{t.workDayEndTime}</span>
-            <input type="time" value={draft.workDayEndTime} onChange={(event) => updateDraft("workDayEndTime", event.target.value)} />
-          </label>
-          <div className="site-settings-section-title">
+          </section>
+
+          <section className="settings-section-card">
+            <h3>{t.gpsLocation}</h3>
+            <p>{t.gpsRadiusHelp}</p>
+            <div className="settings-section-grid">
+              <label>
+                <span>{t.latitude}</span>
+                <input type="number" step="any" value={draft.latitude} onChange={(event) => updateDraft("latitude", event.target.value)} />
+              </label>
+              <label>
+                <span>{t.longitude}</span>
+                <input type="number" step="any" value={draft.longitude} onChange={(event) => updateDraft("longitude", event.target.value)} />
+              </label>
+              <label>
+                <span>{t.allowedRadiusMeters}</span>
+                <input type="number" min="1" step="1" value={draft.radiusMeters} onChange={(event) => updateDraft("radiusMeters", event.target.value)} />
+              </label>
+            </div>
+            <button className="settings-action-secondary location-fill-button" type="button" onClick={handleUseCurrentLocation}>{t.useCurrentLocationAsSiteLocation}</button>
+          </section>
+
+          <section className="settings-section-card">
+            <h3>{t.workHours}</h3>
+            <div className="settings-section-grid two-columns">
+              <label>
+                <span>{t.workDayStartTime}</span>
+                <input type="time" value={draft.workDayStartTime} onChange={(event) => updateDraft("workDayStartTime", event.target.value)} />
+              </label>
+              <label>
+                <span>{t.workDayEndTime}</span>
+                <input type="time" value={draft.workDayEndTime} onChange={(event) => updateDraft("workDayEndTime", event.target.value)} />
+              </label>
+            </div>
+          </section>
+
+          <section className="settings-section-card site-settings-rule">
             <h3>{t.attendanceRounding || t.roundingRules}</h3>
             <p>{t.roundingRulesDescription}</p>
-          </div>
-          <label className="site-settings-rule">
-            <span>{t.roundingTolerance}</span>
-            <select value={draft.roundingToleranceMinutes ?? DEFAULT_ROUNDING_TOLERANCE_MINUTES} onChange={(event) => updateDraft("roundingToleranceMinutes", Number(event.target.value))}>
-              {ROUNDING_TOLERANCE_OPTIONS.map((minutes) => (
-                <option key={minutes} value={minutes}>{getRoundingToleranceLabel(minutes, t)}</option>
-              ))}
-            </select>
-          </label>
+            <label>
+              <span>{t.roundingTolerance}</span>
+              <select value={draft.roundingToleranceMinutes ?? DEFAULT_ROUNDING_TOLERANCE_MINUTES} onChange={(event) => updateDraft("roundingToleranceMinutes", Number(event.target.value))}>
+                {ROUNDING_TOLERANCE_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>{getRoundingToleranceLabel(minutes, t)}</option>
+                ))}
+              </select>
+            </label>
+          </section>
           <div className="gps-settings-actions">
             <button className="settings-action-primary" type="submit">{t.saveSettings}</button>
-            <button className="settings-action-secondary" type="button" onClick={() => handleFindCoordinates()} disabled={isAddressSearching}>{isAddressSearching ? t.searchingAddress : t.findCoordinates}</button>
-            <button className="settings-action-secondary" type="button" onClick={handleTestLocation}>{testState.status === "checking" ? t.checkingLocation : t.testCurrentLocation}</button>
-            <button className="settings-action-neutral" type="button" onClick={handleCancel}>{t.cancel}</button>
           </div>
-          {addressStatus ? <p className="gps-address-status" role="status">{addressStatus}</p> : null}
+          {addressStatus ? <p className={`gps-address-status ${addressStatusType}`} role="status">{addressStatus}</p> : null}
           {saveMessage ? <p className="gps-save-message" role="status">{saveMessage}</p> : null}
         </form>
-        {testState.status !== "idle" ? (
-          <section className={`gps-test-result ${testState.status}`} aria-live="polite">
-            {testState.message ? <p>{testState.message}</p> : (
-              <>
-                <strong>{testState.isInside ? t.insideAllowedRadius : t.outsideAllowedRadius}</strong>
-                <dl>
-                  <div><dt>{t.currentLatitude}</dt><dd>{testState.currentLocation.latitude.toFixed(6)}</dd></div>
-                  <div><dt>{t.currentLongitude}</dt><dd>{testState.currentLocation.longitude.toFixed(6)}</dd></div>
-                  <div><dt>{t.siteLatitude}</dt><dd>{testState.settings.latitude}</dd></div>
-                  <div><dt>{t.siteLongitude}</dt><dd>{testState.settings.longitude}</dd></div>
-                  <div><dt>{t.distanceFromSite}</dt><dd>{formatDistanceMeters(testState.distanceMeters)} m</dd></div>
-                  <div><dt>{t.allowedRadius}</dt><dd>{formatDistanceMeters(testState.settings.radiusMeters)} m</dd></div>
-                </dl>
-              </>
-            )}
-          </section>
-        ) : null}
       </section>
     </section>
   );
