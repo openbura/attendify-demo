@@ -159,7 +159,7 @@ Connex
 
 ## Handoff Summary For New Chat
 אם פותחים שיחה חדשה, להתחיל כך:
-- הפרויקט נמצא ב-`C:\Users\eyal\Documents\New project`.
+- הפרויקט נמצא ב-`C:\Users\openb\Documents\New project`.
 - לקרוא קודם את `PROJECT_CONTEXT.md`.
 - האפליקציה היא React + Vite.
 - המותג הוא Connex בלבד.
