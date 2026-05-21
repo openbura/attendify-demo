@@ -27,6 +27,8 @@ const WORKER_PASSWORD = "123";
 const ADMIN_USERNAME = "111";
 const ADMIN_PASSWORD = "111";
 const ADMIN_STORAGE_KEY = "connex-admin-workers-live-v1";
+const WORKER_RECORDS_STORAGE_KEY = "connex-worker-records-live-v1";
+const WORKER_ACTIVE_PUNCH_STORAGE_KEY = "connex-worker-active-punch-v1";
 const WORKER_LANGUAGE_STORAGE_KEY = "connex-worker-language";
 const ADMIN_LANGUAGE_STORAGE_KEY = "connex-admin-language";
 const LEGACY_GPS_SETTINGS_STORAGE_KEY = "connex-site-gps-settings-v2";
@@ -232,6 +234,10 @@ const translations = {
     addressSuggestions: "Address suggestions",
     googleMapsReady: "Address lookup is available.",
     googleMapsFallback: "Enter coordinates manually or use current location.",
+    dailyReportDataNotice: "Daily cards use today's local attendance. Demo data is not payroll truth.",
+    monthlyReportDataNotice: "Monthly totals are generated from local/demo rows. Verify before payroll.",
+    checkoutSavedWithGpsEvidence: "Check-out saved with GPS evidence.",
+    checkoutGpsNotVerified: "Check-out saved. GPS evidence was not available.",
   },
   he: {},
   th: {},
@@ -567,6 +573,10 @@ Object.assign(translations.he, {
   addressSuggestions: "הצעות כתובת",
   googleMapsReady: "חיפוש כתובת זמין.",
   googleMapsFallback: "אפשר להזין קואורדינטות ידנית או להשתמש במיקום הנוכחי.",
+  dailyReportDataNotice: "כרטיסי היום משתמשים בנתוני נוכחות מקומיים. נתוני דמו אינם אמת לשכר.",
+  monthlyReportDataNotice: "סיכומי החודש נוצרים מנתוני local/demo. יש לאמת לפני שכר.",
+  checkoutSavedWithGpsEvidence: "היציאה נשמרה עם עדות GPS.",
+  checkoutGpsNotVerified: "היציאה נשמרה. עדות GPS לא הייתה זמינה.",
 });
 
 function timeToMinutes(time) {
@@ -840,6 +850,39 @@ function getInitialWorkerRecords(referenceDate = new Date(), siteSettings = getD
     });
 }
 
+function normalizeWorkerRecord(record, siteSettings = getDefaultSiteSettingsMap()) {
+  const siteId = record?.siteId || DEMO_WORKER_SITE_ID;
+  return applyAttendanceRules({
+    ...record,
+    siteId,
+  }, getSiteSetting(siteSettings, siteId));
+}
+
+function mergeWorkerRecords(baseRecords = [], storedRecords = [], siteSettings = getDefaultSiteSettingsMap()) {
+  const recordsByDate = new Map();
+  for (const record of baseRecords) {
+    if (record?.date) recordsByDate.set(record.date, record);
+  }
+  for (const record of storedRecords) {
+    if (record?.date) recordsByDate.set(record.date, normalizeWorkerRecord(record, siteSettings));
+  }
+  return Array.from(recordsByDate.values());
+}
+
+function getStoredWorkerRecords(referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+  const baselineRecords = getInitialWorkerRecords(referenceDate, siteSettings);
+  try {
+    const storedRecords = JSON.parse(localStorage.getItem(WORKER_RECORDS_STORAGE_KEY) || "[]");
+    return Array.isArray(storedRecords) ? mergeWorkerRecords(baselineRecords, storedRecords, siteSettings) : baselineRecords;
+  } catch {
+    return baselineRecords;
+  }
+}
+
+function getPersistableWorkerRecords(records = []) {
+  return records.filter((record) => record?.source === "live" || record?.gpsEvidence || record?.checkInGpsEvidence || record?.checkOutGpsEvidence);
+}
+
 function getRecordsForMonth(records, referenceDate = new Date()) {
   const monthId = getMonthId(referenceDate);
   return records.filter((record) => isDateInMonth(record.date, monthId));
@@ -922,12 +965,68 @@ function formatGpsMessage(template, values) {
   return Object.entries(values).reduce((message, [key, value]) => message.replace(`{${key}}`, value), template);
 }
 
+function getStoredActivePunch() {
+  try {
+    const storedPunch = JSON.parse(localStorage.getItem(WORKER_ACTIVE_PUNCH_STORAGE_KEY) || "null");
+    return storedPunch?.entryDate && storedPunch?.entryTime ? storedPunch : null;
+  } catch {
+    return null;
+  }
+}
+
+function createGpsEvidence({ action, siteSetting, timestamp = new Date(), currentLocation = null, radiusResult = null, error = null }) {
+  const safeSiteSetting = normalizeSiteSetting(siteSetting?.siteId || DEMO_WORKER_SITE_ID, siteSetting);
+  return {
+    action,
+    timestamp: timestamp.toISOString(),
+    site: {
+      id: safeSiteSetting.siteId,
+      name: safeSiteSetting.siteName,
+      address: safeSiteSetting.siteAddress,
+    },
+    latitude: Number.isFinite(currentLocation?.latitude) ? currentLocation.latitude : null,
+    longitude: Number.isFinite(currentLocation?.longitude) ? currentLocation.longitude : null,
+    accuracy: Number.isFinite(currentLocation?.accuracy) ? currentLocation.accuracy : null,
+    distanceMeters: Number.isFinite(radiusResult?.distanceMeters) ? Math.round(radiusResult.distanceMeters) : null,
+    allowedRadiusMeters: Number(safeSiteSetting.radiusMeters),
+    isWithinRadius: typeof radiusResult?.isWithinRadius === "boolean" ? radiusResult.isWithinRadius : null,
+    errorCode: error?.code ?? null,
+    errorMessage: error?.message || "",
+  };
+}
+
+async function captureGpsEvidence(action, siteSetting) {
+  const timestamp = new Date();
+  if (!hasValidSiteSettings(siteSetting)) {
+    const error = new Error("Invalid site GPS settings.");
+    return {
+      evidence: createGpsEvidence({ action, siteSetting, timestamp, error }),
+      error,
+    };
+  }
+
+  const currentLocation = await getCurrentLocation();
+  const siteLocation = getGpsSiteLocation(siteSetting);
+  const radiusMeters = Number(siteSetting.radiusMeters);
+  const radiusResult = isWithinAllowedRadius(currentLocation, siteLocation, radiusMeters);
+
+  return {
+    evidence: createGpsEvidence({ action, siteSetting, timestamp, currentLocation, radiusResult }),
+    currentLocation,
+    radiusResult,
+  };
+}
+
+function isWorkerMissingToday(worker, todayDate) {
+  return isSameDate(worker?.date || todayDate, todayDate) && Boolean(worker?.status || !worker?.entry);
+}
+
 function getSiteMetrics(workers, siteId, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
   const todayDate = getTodayDate(referenceDate);
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId && isSameDate(worker.date || todayDate, todayDate));
   const siteSetting = getSiteSetting(siteSettings, siteId);
-  const worked = siteWorkers.filter((worker) => worker.entry && worker.exit);
-  const missing = siteWorkers.length - worked.length;
+  const worked = siteWorkers.filter((worker) => worker.entry);
+  const missing = siteWorkers.filter((worker) => isWorkerMissingToday(worker, todayDate)).length;
   const totalHours = siteWorkers.reduce((sum, worker) => sum + getDecimalHours(worker, siteSetting), 0);
   return {
     totalWorkers: siteWorkers.length,
@@ -941,8 +1040,8 @@ function getSiteMetrics(workers, siteId, referenceDate = new Date(), siteSetting
 function getGlobalAdminMetrics(workers, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
   const todayDate = getTodayDate(referenceDate);
   const todayWorkers = workers.filter((worker) => isSameDate(worker.date || todayDate, todayDate));
-  const worked = todayWorkers.filter((worker) => worker.entry && worker.exit);
-  const missing = todayWorkers.length - worked.length;
+  const worked = todayWorkers.filter((worker) => worker.entry);
+  const missing = todayWorkers.filter((worker) => isWorkerMissingToday(worker, todayDate)).length;
   const totalHours = todayWorkers.reduce((sum, worker) => sum + getDecimalHours(worker, getSiteSetting(siteSettings, worker.siteId)), 0);
 
   return {
@@ -1018,14 +1117,15 @@ function getDemoRecordForDate(worker, date, index = 0) {
       entry: worker.entry,
       exit: worker.exit,
       status: worker.status,
+      source: worker.source || "local-today",
     };
   }
   const seed = worker?.id || 1;
   const day = Number(date.slice(0, 2));
   const month = Number(date.slice(3, 5));
   const marker = seed + day + month + index;
-  if (marker % 7 === 0) return { date, entry: "", exit: "", status: "אי הגעה" };
-  if (marker % 11 === 0) return { date, entry: "", exit: "", status: "מחלה" };
+  if (marker % 7 === 0) return { date, entry: "", exit: "", status: "אי הגעה", source: "demo-generated" };
+  if (marker % 11 === 0) return { date, entry: "", exit: "", status: "מחלה", source: "demo-generated" };
   const times = getDeterministicAttendance(seed, index + month);
   return {
     date,
@@ -1035,6 +1135,7 @@ function getDemoRecordForDate(worker, date, index = 0) {
     entry: times.entry,
     exit: times.exit,
     status: "",
+    source: "demo-generated",
   };
 }
 
@@ -1074,7 +1175,8 @@ function getAttentionWorkers(workers, t, language, siteSettings = getDefaultSite
   return workers
     .map((worker) => {
       if (worker.status) return { worker, label: getStatusLabel(worker.status, language, t) };
-      if (!worker.entry || !worker.exit) return { worker, label: t.missingData };
+      if (!worker.entry) return { worker, label: t.missingToday };
+      if (!worker.exit) return { worker, label: t.missingData };
       const minutes = getRecordMinutes(worker, getSiteSetting(siteSettings, worker.siteId));
       if (minutes && minutes > 11 * 60) return { worker, label: t.unusualHours };
       return null;
@@ -1085,7 +1187,8 @@ function getAttentionWorkers(workers, t, language, siteSettings = getDefaultSite
 function getRecentActivity(workers, t, language, siteSettings = getDefaultSiteSettingsMap()) {
   const attention = getAttentionWorkers(workers, t, language, siteSettings);
   const sickWorker = attention.find(({ worker }) => worker.status);
-  const missingWorkers = workers.filter((worker) => !worker.entry || !worker.exit).length;
+  const todayDate = getTodayDate();
+  const missingWorkers = workers.filter((worker) => isWorkerMissingToday(worker, todayDate)).length;
   const updatedSite = siteDefinitions[0];
 
   return [
@@ -1115,17 +1218,15 @@ function getRecentActivity(workers, t, language, siteSettings = getDefaultSiteSe
 function getDashboardMissingWorkers(workers, t, language, referenceDate = new Date()) {
   const todayDate = getTodayDate(referenceDate);
   const todayWorkers = workers.filter((worker) => isSameDate(worker.date || todayDate, todayDate));
-  const statusWorkers = todayWorkers.filter((worker) => worker.status || !worker.entry || !worker.exit);
-  const fallbackWorkers = todayWorkers.filter((worker) => !statusWorkers.some((missingWorker) => missingWorker.id === worker.id));
-  const focusedWorkers = [...statusWorkers, ...fallbackWorkers].slice(0, 3);
+  const missingWorkers = todayWorkers.filter((worker) => isWorkerMissingToday(worker, todayDate));
 
-  return focusedWorkers.map((worker, index) => {
-    const demoReason = worker.status || (index === 2 ? "אי הגעה" : "");
+  return missingWorkers.map((worker) => {
+    const reason = worker.status || "אי הגעה";
     return {
       worker,
       site: siteDefinitions.find((site) => site.id === worker.siteId),
-      reason: getStatusLabel(demoReason || "אי הגעה", language, t),
-      note: demoReason ? getStatusLabel(demoReason, language, t) : t.missingData,
+      reason: getStatusLabel(reason, language, t),
+      note: getStatusLabel(reason, language, t),
     };
   });
 }
@@ -1139,11 +1240,9 @@ function App() {
   const [activeSiteId, setActiveSiteId] = useState(siteDefinitions[0].id);
   const [activeWorkerId, setActiveWorkerId] = useState(null);
   const [workerHistoryBackView, setWorkerHistoryBackView] = useState("site");
-  const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [activeEntryDate, setActiveEntryDate] = useState("");
-  const [activeEntryTime, setActiveEntryTime] = useState("");
   const [siteSettings, setSiteSettings] = useState(getStoredSiteSettings);
-  const [records, setRecords] = useState(() => getInitialWorkerRecords(new Date(), getStoredSiteSettings()));
+  const [activePunch, setActivePunch] = useState(getStoredActivePunch);
+  const [records, setRecords] = useState(() => getStoredWorkerRecords(new Date(), getStoredSiteSettings()));
   const [adminWorkers, setAdminWorkers] = useState(getStoredAdminWorkers);
   const [workerLanguage, setWorkerLanguage] = useState(getInitialWorkerLanguage);
   const [adminLanguage, setAdminLanguage] = useState(getInitialAdminLanguage);
@@ -1155,6 +1254,9 @@ function App() {
   const language = screen === "admin" ? adminLanguage : workerLanguage;
   const t = useMemo(() => translations[language], [language]);
   const isRtl = language === "he";
+  const isCheckedIn = Boolean(activePunch);
+  const activeEntryDate = activePunch?.entryDate || "";
+  const activeEntryTime = activePunch?.entryTime || "";
   const todayDate = getTodayDate(clock);
   const currentMonthId = getMonthId(clock);
   const currentMonthWorkerRecords = useMemo(() => getRecordsForMonth(records, clock), [records, currentMonthId]);
@@ -1176,6 +1278,23 @@ function App() {
   useEffect(() => {
     localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(siteSettings));
   }, [siteSettings]);
+
+  useEffect(() => {
+    localStorage.setItem(WORKER_RECORDS_STORAGE_KEY, JSON.stringify(getPersistableWorkerRecords(records)));
+  }, [records]);
+
+  useEffect(() => {
+    if (activePunch) {
+      localStorage.setItem(WORKER_ACTIVE_PUNCH_STORAGE_KEY, JSON.stringify(activePunch));
+      return;
+    }
+    localStorage.removeItem(WORKER_ACTIVE_PUNCH_STORAGE_KEY);
+  }, [activePunch]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = isRtl ? "rtl" : "ltr";
+  }, [language, isRtl]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(new Date()), 1000);
@@ -1228,35 +1347,29 @@ function App() {
     setScreen("login");
     setFields(fieldInitialState);
     setShowError(false);
-    setIsCheckedIn(false);
-    setActiveEntryDate("");
-    setActiveEntryTime("");
     setAdminView("dashboard");
   };
 
   const handleAttendanceToggle = async () => {
+    if (isCheckingLocation) return;
+
     if (!isCheckedIn) {
-      if (isCheckingLocation) return;
       setIsCheckingLocation(true);
       setGpsStatus({ type: "info", message: t.checkingLocation });
 
       try {
-        if (!hasValidSiteSettings(workerSiteSetting)) {
+        const { evidence, radiusResult, error } = await captureGpsEvidence("check-in", workerSiteSetting);
+        if (error) {
           setGpsStatus({ type: "error", message: t.siteSettingsInvalid || t.gpsSettingsInvalid });
           return;
         }
 
-        const currentLocation = await getCurrentLocation();
-        const siteLocation = getGpsSiteLocation(workerSiteSetting);
-        const radiusMeters = Number(workerSiteSetting.radiusMeters);
-        const result = isWithinAllowedRadius(currentLocation, siteLocation, radiusMeters);
-
-        if (!result.isWithinRadius) {
+        if (!radiusResult.isWithinRadius) {
           setGpsStatus({
             type: "error",
             message: formatGpsMessage(t.tooFarFromSiteWithDistance, {
-              distance: formatDistanceMeters(result.distanceMeters),
-              radius: formatDistanceMeters(radiusMeters),
+              distance: formatDistanceMeters(radiusResult.distanceMeters),
+              radius: formatDistanceMeters(workerSiteSetting.radiusMeters),
             }),
           });
           return;
@@ -1265,9 +1378,12 @@ function App() {
         const entryDate = new Date();
         const entryDateLabel = getTodayDate(entryDate);
         const entryTime = formatCurrentTime(entryDate);
-        setIsCheckedIn(true);
-        setActiveEntryDate(entryDateLabel);
-        setActiveEntryTime(entryTime);
+        setActivePunch({
+          entryDate: entryDateLabel,
+          entryTime,
+          siteId: DEMO_WORKER_SITE_ID,
+          checkInGpsEvidence: evidence,
+        });
         setRecords((currentRecords) => [
           applyAttendanceRules({
             id: Date.now(),
@@ -1278,6 +1394,11 @@ function App() {
             entry: entryTime,
             exit: "",
             source: "live",
+            checkInGpsEvidence: evidence,
+            gpsEvidence: {
+              checkIn: evidence,
+              checkOut: null,
+            },
           }, workerSiteSetting),
           ...currentRecords.filter((record) => !isSameDate(record.date, entryDateLabel)),
         ]);
@@ -1293,9 +1414,22 @@ function App() {
       return;
     }
 
+    setIsCheckingLocation(true);
+    setGpsStatus({ type: "info", message: t.checkingLocation });
+    let checkOutGpsEvidence = null;
+    try {
+      const { evidence } = await captureGpsEvidence("check-out", workerSiteSetting);
+      checkOutGpsEvidence = evidence;
+    } catch (error) {
+      checkOutGpsEvidence = createGpsEvidence({ action: "check-out", siteSetting: workerSiteSetting, error });
+    } finally {
+      setIsCheckingLocation(false);
+    }
+
     const exitDate = new Date();
     const recordDate = getTodayDate(exitDate);
     const exitTime = formatCurrentTime(exitDate);
+    const checkInGpsEvidence = activePunch?.checkInGpsEvidence || null;
     setRecords((currentRecords) => [
       applyAttendanceRules({
         id: Date.now(),
@@ -1306,13 +1440,20 @@ function App() {
         entry: activeEntryTime || formatCurrentTime(exitDate),
         exit: exitTime,
         source: "live",
+        checkInGpsEvidence,
+        checkOutGpsEvidence,
+        gpsEvidence: {
+          checkIn: checkInGpsEvidence,
+          checkOut: checkOutGpsEvidence,
+        },
       }, workerSiteSetting),
       ...currentRecords.filter((record) => !isSameDate(record.date, activeEntryDate || recordDate)),
     ]);
-    setIsCheckedIn(false);
-    setActiveEntryDate("");
-    setActiveEntryTime("");
-    setGpsStatus(null);
+    setActivePunch(null);
+    setGpsStatus({
+      type: checkOutGpsEvidence?.latitude ? "success" : "info",
+      message: checkOutGpsEvidence?.latitude ? t.checkoutSavedWithGpsEvidence : t.checkoutGpsNotVerified,
+    });
   };
 
   const updateAdminWorker = (workerId, field, value) => {
@@ -1550,7 +1691,7 @@ function WorkerCard({ t, isCheckedIn }) {
       <div className="worker-avatar" aria-hidden="true"><span className="avatar-helmet" /><span className="avatar-face" /><span className="avatar-shirt" /></div>
       <div className="worker-details">
         <h1>{t.workerName}</h1>
-        <p>{t.passportNumber} <span>EL6998320</span></p>
+        <p>{t.passportNumber} <NumericToken className="passport-token">EL6998320</NumericToken></p>
         <p>{t.country} <span>{t.countryValue}</span></p>
       </div>
       <div className={isCheckedIn ? "status-pill working" : "status-pill idle"}><span />{isCheckedIn ? t.statusWorking : t.statusNotWorking}</div>
@@ -1589,10 +1730,10 @@ function HistoryTable({ t, records, siteSetting }) {
         const displayRecord = applyAttendanceRules(record, siteSetting);
         return (
           <div className="history-row" role="row" key={record.id}>
-            <span>{displayRecord.date}</span>
-            <span>{displayRecord.entry}</span>
-            <span>{displayRecord.exit || t.noExitYet}</span>
-            <span>{displayRecord.exit ? getRecordTotal(displayRecord, siteSetting) : "-"}</span>
+            <span><NumericToken>{displayRecord.date}</NumericToken></span>
+            <span><NumericToken>{displayRecord.entry}</NumericToken></span>
+            <span>{displayRecord.exit ? <NumericToken>{displayRecord.exit}</NumericToken> : t.noExitYet}</span>
+            <span>{displayRecord.exit ? <NumericToken>{getRecordTotal(displayRecord, siteSetting)}</NumericToken> : "-"}</span>
           </div>
         );
       })}
@@ -1648,9 +1789,9 @@ function AdminShell({ t, isRtl, language, clock, workers, siteSettings, activeVi
             <LanguageSelector language={language} onChange={onLanguageChange} label={t.languageLabel} options={adminLanguages} context="admin" />
           </div>
         </header>
+        <AdminMobileNav t={t} activeView={activeView} onNavigate={onNavigate} />
         {children}
       </section>
-      <AdminMobileNav t={t} activeView={activeView} onNavigate={onNavigate} />
     </main>
   );
 }
@@ -1731,7 +1872,6 @@ function AdminDashboardView({ t, workers, clock, language, siteSettings, onOpenM
   const monthLabel = getMonthLabel(monthId, language);
   const globalMetrics = getGlobalAdminMetrics(workers, clock, siteSettings);
   const monthHours = getGlobalMonthlyHours(workers, monthId, clock, siteSettings);
-  const dashboardMissingWorkers = getDashboardMissingWorkers(workers, t, language, clock);
   const siteHealth = siteDefinitions
     .map((site) => ({ site, metrics: getSiteMetrics(workers, site.id, clock, siteSettings) }))
     .sort((left, right) => right.metrics.missing - left.metrics.missing || left.metrics.attendance - right.metrics.attendance);
@@ -1759,7 +1899,7 @@ function AdminDashboardView({ t, workers, clock, language, siteSettings, onOpenM
         <div className="control-kpi-grid">
           <Metric value={globalMetrics.totalWorkers} label={t.totalWorkers} tone="blue" />
           <Metric value={globalMetrics.worked} label={t.arrivedToday} tone="green" />
-          <ActionMetric value={dashboardMissingWorkers.length} label={t.missingToday} tone="red" onClick={onOpenMissingWorkers} />
+          <ActionMetric value={globalMetrics.missing} label={t.missingToday} tone="red" onClick={onOpenMissingWorkers} />
           <Metric value={globalMetrics.totalHours} label={t.todayHours} tone="purple" />
           <Metric value={monthHours} label={formatText(t.monthHours, { month: monthLabel })} tone="blue" />
         </div>
@@ -1823,7 +1963,7 @@ function AdminMissingWorkersView({ t, language, workers, clock, onBack, onOpenSi
           <article key={worker.id} className="missing-worker-card">
             <div>
               <h3>{getWorkerFullName(worker)}</h3>
-              <p>{t.passport}: {worker.passport}</p>
+              <p>{t.passport}: <NumericToken className="passport-token">{worker.passport}</NumericToken></p>
             </div>
             <div>
               <span>{t.workersOnSite}</span>
@@ -1839,7 +1979,7 @@ function AdminMissingWorkersView({ t, language, workers, clock, onBack, onOpenSi
             </div>
             <div>
               <span>{t.date}</span>
-              <strong>{worker.date || todayDate}</strong>
+              <strong><NumericToken>{worker.date || todayDate}</NumericToken></strong>
             </div>
             <button type="button" onClick={() => onOpenSite(worker.siteId)}>{t.openSite}</button>
           </article>
@@ -2296,7 +2436,7 @@ function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettin
       <PageTitle title={t.monthlyWorkerHistory} subtitle={`${fullName} · ${site?.name || ""}`} />
       <div className="worker-history-profile">
         <div className="worker-history-avatar" aria-hidden="true"><span className="avatar-helmet" /><span className="avatar-face" /><span className="avatar-shirt" /></div>
-        <div><h3>{fullName}</h3><p>{t.passport}: {worker?.passport} · {t.country}: {getCountryLabel(worker?.country, language)}</p></div>
+        <div><h3>{fullName}</h3><p>{t.passport}: <NumericToken className="passport-token">{worker?.passport}</NumericToken> · {t.country}: {getCountryLabel(worker?.country, language)}</p></div>
       </div>
       <section className="worker-history-summary">
         <Metric value={monthlyTotal} label={t.monthlyHours} tone="purple" />
@@ -2304,7 +2444,7 @@ function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettin
       <AdminTableFrame>
         <table className="admin-table">
           <thead><tr><th>{t.date}</th><th>{t.entry}</th><th>{t.exit}</th><th>{t.totalHours}</th><th>{t.statusReason}</th></tr></thead>
-          <tbody>{history.map((record) => <tr className={record.status ? "status-alert-row" : ""} key={record.date}><td>{record.date}</td><td>{record.entry || "-"}</td><td>{record.exit || "-"}</td><td>{getRecordTotal(record, siteSetting) || "-"}</td><td>{getStatusLabel(record.status, language, t)}</td></tr>)}</tbody>
+          <tbody>{history.map((record) => <tr className={record.status ? "status-alert-row" : ""} key={record.date}><td><NumericToken>{record.date}</NumericToken></td><td><NumericToken>{record.entry || "-"}</NumericToken></td><td><NumericToken>{record.exit || "-"}</NumericToken></td><td><NumericToken>{getRecordTotal(record, siteSetting) || "-"}</NumericToken></td><td>{getStatusLabel(record.status, language, t)}</td></tr>)}</tbody>
         </table>
       </AdminTableFrame>
     </section>
@@ -2336,6 +2476,7 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
           <small>{t.reportControls}</small>
           <h2>{t.dateRange}</h2>
           <p>{rangeLabel}</p>
+          <p className="report-data-notice">{reportMode === "daily" ? t.dailyReportDataNotice : t.monthlyReportDataNotice}</p>
         </div>
         <div className="selected-site-placeholder">
           <small>{t.selectSite}</small>
@@ -2346,7 +2487,7 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
       <div className="report-selector-grid">
         {siteDefinitions.map((site) => {
           const metrics = getSiteMetrics(workers, site.id, clock, siteSettings);
-          const monthlyHours = getSiteMonthlyHours(workers, site.id, selectedMonth, clock, siteSettings);
+          const reportTotals = getSiteReportTotals(workers, site.id, selectedMonth, clock, siteSettings);
           return (
             <article className="report-selector-card" key={site.id}>
               <div className="report-selector-main">
@@ -2372,10 +2513,10 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
                   </>
                 ) : (
                   <>
-                    <Metric value={metrics.totalWorkers} label={t.totalWorkers} tone="blue" />
-                    <Metric value={monthlyHours} label={t.monthlyHours} tone="purple" />
-                    <Metric value={metrics.missing} label={t.missingDays} tone="red" />
-                    <Metric value={metrics.worked} label={t.daysWorked} tone="green" />
+                    <Metric value={reportTotals.totalWorkers} label={t.totalWorkers} tone="blue" />
+                    <Metric value={reportTotals.monthlyHours} label={t.monthlyHours} tone="purple" />
+                    <Metric value={reportTotals.missingDays} label={t.missingDays} tone="red" />
+                    <Metric value={reportTotals.daysWorked} label={t.daysWorked} tone="green" />
                   </>
                 )}
               </div>
@@ -2422,6 +2563,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
         <div>
           <small>{t.selectedRange}</small>
           <strong>{getReportRangeLabel(selectedMonth, clock)}</strong>
+          <p className="report-data-notice">{reportMode === "daily" ? t.dailyReportDataNotice : t.monthlyReportDataNotice}</p>
         </div>
       </section>
       <section className="report-summary-card">
@@ -2440,7 +2582,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
             <tbody>
               {dailyRows.map(({ worker, record }) => (
                 <tr className={record.status ? "status-alert-row" : ""} key={`${worker.id}-${record.date}`} onClick={() => onOpenWorker(worker.id)}>
-                  <td>{record.date}</td><td>{getWorkerFullName(worker)}</td><td>{worker.passport}</td><td>{getCountryLabel(worker.country, language)}</td><td>{record.entry || "-"}</td><td>{record.exit || "-"}</td><td>{getRecordTotal(record, siteSetting) || "-"}</td><td>{getStatusLabel(record.status, language, t)}</td>
+                  <td><NumericToken>{record.date}</NumericToken></td><td>{getWorkerFullName(worker)}</td><td><NumericToken className="passport-token">{worker.passport}</NumericToken></td><td>{getCountryLabel(worker.country, language)}</td><td><NumericToken>{record.entry || "-"}</NumericToken></td><td><NumericToken>{record.exit || "-"}</NumericToken></td><td><NumericToken>{getRecordTotal(record, siteSetting) || "-"}</NumericToken></td><td>{getStatusLabel(record.status, language, t)}</td>
                 </tr>
               ))}
             </tbody>
@@ -2457,7 +2599,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
                 const summary = getWorkerMonthlySummary(worker, t, language, selectedMonth, clock, siteSettings);
                 return (
                   <tr className={worker.status ? "status-alert-row" : ""} key={worker.id} onClick={() => onOpenWorker(worker.id)}>
-                    <td>{getWorkerFullName(worker)}</td><td>{worker.passport}</td><td>{getCountryLabel(worker.country, language)}</td><td>{summary.daysWorked}</td><td>{summary.missingDays}</td><td>{summary.totalHours}</td>
+                    <td>{getWorkerFullName(worker)}</td><td><NumericToken className="passport-token">{worker.passport}</NumericToken></td><td>{getCountryLabel(worker.country, language)}</td><td><NumericToken>{summary.daysWorked}</NumericToken></td><td><NumericToken>{summary.missingDays}</NumericToken></td><td><NumericToken>{summary.totalHours}</NumericToken></td>
                   </tr>
                 );
               })}
@@ -2543,6 +2685,10 @@ function getSiteMonthlyHours(workers, siteId, monthId = getDefaultReportMonthId(
 
 function Metric({ value, label, tone }) {
   return <div className={`metric ${tone}`}><strong>{value}</strong><span>{label}</span></div>;
+}
+
+function NumericToken({ children, className = "" }) {
+  return <bdi className={["numeric-token", className].filter(Boolean).join(" ")}>{children}</bdi>;
 }
 
 function ActionMetric({ value, label, tone, onClick }) {

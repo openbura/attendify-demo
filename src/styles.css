@@ -5226,6 +5226,13 @@ select:focus-visible {
   background: #fff;
 }
 
+.control-kpi-grid .metric strong {
+  max-width: 100%;
+  font-size: clamp(24px, 1.7vw, 28px);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
 .dashboard-ops-grid {
   display: grid;
   grid-template-columns: minmax(360px, 1.1fr) minmax(300px, 0.9fr);
@@ -6747,6 +6754,25 @@ select:focus-visible {
   height: calc(var(--connex-logo-size) * 0.09) !important;
 }
 
+.admin-logo-center .dashboard-logo .helmet {
+  left: calc(var(--connex-logo-size) * 0.22) !important;
+  top: calc(var(--connex-logo-size) * 0.08) !important;
+  width: calc(var(--connex-logo-size) * 0.56) !important;
+  height: calc(var(--connex-logo-size) * 0.28) !important;
+}
+
+.admin-logo-center .dashboard-logo .helmet::before {
+  left: calc(var(--connex-logo-size) * 0.215) !important;
+  top: calc(var(--connex-logo-size) * -0.03) !important;
+  width: calc(var(--connex-logo-size) * 0.13) !important;
+  height: calc(var(--connex-logo-size) * 0.31) !important;
+}
+
+.admin-logo-center .dashboard-logo .helmet::after {
+  bottom: calc(var(--connex-logo-size) * -0.035) !important;
+  height: calc(var(--connex-logo-size) * 0.07) !important;
+}
+
 @media (max-width: 760px) {
   .login-layout .brand-icon,
   .brand-header .brand-icon {
@@ -7563,5 +7589,202 @@ select:focus-visible {
 @media (max-width: 420px) {
   .login-layout {
     transform: translateY(-6svh);
+  }
+}
+
+/* Implementation Round 1 visual regression repair */
+.numeric-token {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.passport-token {
+  letter-spacing: 0;
+}
+
+.report-data-notice {
+  margin: 7px 0 0;
+  max-width: 680px;
+  color: #4b5f7a !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  line-height: 1.35;
+  text-shadow: none !important;
+}
+
+.gps-worker-message {
+  max-width: min(430px, calc(100vw - 28px));
+  overflow-wrap: break-word;
+}
+
+.admin-table-shell,
+.admin-table-wrap {
+  max-width: 100%;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-page-title {
+  min-width: 0;
+  overflow: visible;
+}
+
+.admin-page-title p {
+  line-height: 1.35;
+}
+
+.admin-shell[dir="rtl"] :is(
+  .admin-main,
+  .admin-page,
+  .admin-page-title,
+  .control-hero-main,
+  .needs-attention-panel,
+  .recent-activity-panel,
+  .site-health-panel,
+  .site-health-card,
+  .report-control-panel,
+  .report-selector-card,
+  .missing-workers-header,
+  .missing-worker-card,
+  .worker-history-profile,
+  .site-settings-card,
+  .gps-settings-card,
+  .admin-table-shell
+) {
+  direction: rtl;
+  text-align: right;
+}
+
+.admin-shell[dir="rtl"] .admin-page-title,
+.admin-shell[dir="rtl"] .admin-page-title > * {
+  justify-items: start !important;
+  justify-self: start !important;
+  text-align: right !important;
+}
+
+.admin-shell[dir="rtl"] .panel-heading {
+  direction: rtl;
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .login-layout {
+    width: min(100%, 360px) !important;
+    max-width: 360px !important;
+    margin-inline: auto !important;
+  }
+
+  .login-card {
+    width: 100% !important;
+    max-width: 340px !important;
+    margin-inline: auto !important;
+  }
+
+  .admin-main {
+    padding-bottom: 28px !important;
+  }
+
+  .admin-bottom-nav {
+    position: sticky !important;
+    top: 8px;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 55;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    margin: 0 0 12px !important;
+  }
+
+  .worker-brand {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .worker-brand .dashboard-logo {
+    grid-template-columns: 78px minmax(0, 1fr) !important;
+    width: min(100%, 360px) !important;
+    max-width: calc(100vw - 28px) !important;
+    column-gap: 10px !important;
+  }
+
+  .worker-brand .dashboard-logo .brand-icon {
+    --connex-logo-size: 78px !important;
+  }
+
+  .worker-brand .dashboard-logo .brand-name {
+    font-size: clamp(38px, 11vw, 46px) !important;
+    line-height: 0.95 !important;
+  }
+
+  .worker-brand .dashboard-logo .brand-subtitle {
+    max-width: 100%;
+    font-size: 11px !important;
+    white-space: nowrap;
+  }
+
+  .worker-brand .dashboard-logo .brand-subtitle::before,
+  .worker-brand .dashboard-logo .brand-subtitle::after {
+    width: 14px !important;
+    margin-inline: 5px !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .admin-shell,
+  .admin-shell[dir="rtl"] {
+    grid-template-columns: 1fr !important;
+    max-width: 100%;
+  }
+
+  .admin-sidebar {
+    grid-column: auto !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .admin-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .admin-nav button {
+    min-width: 0;
+    padding-inline: 10px !important;
+    font-size: 14px !important;
+  }
+
+  .admin-main,
+  .admin-shell[dir="rtl"] .admin-main {
+    grid-column: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding-inline: 18px !important;
+  }
+
+  .admin-topbar,
+  .admin-page,
+  .admin-table-shell {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .admin-dashboard-page {
+    gap: 20px;
+  }
+
+  .admin-page-title {
+    padding-bottom: 6px;
   }
 }
