@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.qa
+.codex
+.tunnel-tools
+.env
+.env.*
+*.log
+*.mp4
+output.mp4
+connex-hebrew*.mp4
+assets/live demo june 26/
