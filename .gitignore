@@ -1,0 +1,19 @@
+node_modules
+dist
+.qa/
+.codex/
+.env
+.env.*
+.env.local
+npm-debug.log*
+/.edge-test-profile*
+/dashboard-*.png
+/preview-*.png
+/pw-*.png
+/lt-*.png
+/localtunnel.*.log
+/cloudflared.*.log
+/.tunnel-tools/
+/assets/live demo june 26/
+
+.vercel

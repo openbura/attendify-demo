@@ -1,0 +1,27 @@
+{
+  "name": "connex-worker-attendance",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "remotion:studio": "remotion studio src/remotion/index.jsx",
+    "remotion:render": "remotion render src/remotion/index.jsx ConnexPromo output.mp4 --codec=h264",
+    "remotion:render:hebrew": "remotion render src/remotion/index.jsx ConnexPromoHebrew connex-hebrew.mp4 --codec=h264",
+    "remotion:render:hebrew:music": "remotion render src/remotion/index.jsx ConnexPromoHebrewWithMusic connex-hebrew-music.mp4 --codec=h264",
+    "remotion:render:hebrew:mobile": "remotion render src/remotion/index.jsx ConnexPromoHebrewMobile connex-hebrew-mobile.mp4 --codec=h264",
+    "remotion:render:hebrew:mobile:music": "remotion render src/remotion/index.jsx ConnexPromoHebrewMobileWithMusic connex-hebrew-mobile-music.mp4 --codec=h264"
+  },
+  "dependencies": {
+    "@fontsource/heebo": "^5.2.8",
+    "@remotion/cli": "^4.0.457",
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "remotion": "^4.0.457",
+    "sharp": "^0.34.5",
+    "vite": "^7.2.7"
+  }
+}
