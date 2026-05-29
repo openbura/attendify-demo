@@ -40,7 +40,7 @@ const PhoneMock = () => {
             <div className="worker-profile">
               <div className="worker-photo">MS</div>
               <div>
-                <strong>MINGQIANG SONG</strong>
+                <strong>LIVE DEMO WORKER</strong>
                 <span>Concrete team</span>
               </div>
             </div>

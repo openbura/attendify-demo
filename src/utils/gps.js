@@ -1,39 +1,44 @@
 export const DEFAULT_SITE_GPS_SETTINGS = {
-  siteId: "dania",
-  siteName: "דניה ווסט הוד השרון",
-  siteAddress: "עמק איילון 1, כפר סבא",
-  latitude: 32.179343,
-  longitude: 34.931399,
-  radiusMeters: 500,
+  siteId: "naomi-shemer",
+  siteName: "פרוייקט נעמי שמר",
+  siteAddress: "נעמי שמר 2, הוד השרון",
+  latitude: 32.1474603,
+  longitude: 34.8893482,
+  radiusMeters: 250,
 };
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+export const GEOLOCATION_ERROR_CODES = {
+  INSECURE_CONTEXT: "INSECURE_CONTEXT",
+  UNSUPPORTED: "UNSUPPORTED",
+};
+export const GPS_REQUEST_TIMEOUT_MS = 20000;
 let googleMapsPromise;
 
 const knownAddressCoordinates = [
   {
-    keywords: ["עמק איילון 1", "כפר סבא", "emek ayalon 1", "kfar saba"],
-    address: "עמק איילון 1, כפר סבא",
-    latitude: 32.179343,
-    longitude: 34.931399,
+    keywords: ["פרוייקט נעמי שמר", "נעמי שמר 2", "הוד השרון", "naomi shemer 2", "hod hasharon"],
+    address: "נעמי שמר 2, הוד השרון",
+    latitude: 32.1474603,
+    longitude: 34.8893482,
   },
   {
-    keywords: ["דניה ווסט", "הוד השרון", "יונה וולך 10", "dania", "hod hasharon", "yona wallach"],
-    address: "יונה וולך 10, הוד השרון",
-    latitude: 32.159252,
-    longitude: 34.893785,
-  },
-  {
-    keywords: ["גולומב 38", "רמת השרון", "golomb 38", "ramat hasharon"],
+    keywords: ["פרוייקט אבגד", "אבגד", "גולומב 38", "רמת השרון", "golomb 38", "ramat hasharon"],
     address: "גולומב 38, רמת השרון",
-    latitude: 32.1467,
-    longitude: 34.8397,
+    latitude: 32.1441405,
+    longitude: 34.8398525,
   },
   {
-    keywords: ["פורמה", "תל אביב", "forma", "tel aviv"],
-    address: "תל אביב-יפו",
-    latitude: 32.0853,
-    longitude: 34.7818,
+    keywords: ["פרוייקט חברת חשמל", "חברת חשמל", "לכיש 69", "קריית ים", "קרית ים", "lakhish 69", "kiryat yam"],
+    address: "לכיש 69, קריית ים",
+    latitude: 32.853151,
+    longitude: 35.0828546,
+  },
+  {
+    keywords: ["פורמה תל אביב", "פורמה", "הברון הירש 3", "תל אביב", "baron hirsch 3", "tel aviv"],
+    address: "הברון הירש 3, תל אביב",
+    latitude: 32.110132,
+    longitude: 34.796307,
   },
 ];
 
@@ -182,12 +187,64 @@ export async function geocodeAddress(address) {
   return suggestions[0];
 }
 
+function createGeolocationError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+export function getDevGpsTestMode() {
+  if (!import.meta.env.DEV || typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("connexGpsTest") || "";
+}
+
+export function isDevGpsTestModeActive() {
+  return Boolean(getDevGpsTestMode());
+}
+
+function getDevGpsTestLocation(mode) {
+  const locations = {
+    "outside-assigned": { latitude: 32.110132, longitude: 34.796307, accuracy: 8 },
+    "inside-forma": { latitude: 32.110132, longitude: 34.796307, accuracy: 8 },
+    "inside-naomi": { latitude: 32.1474603, longitude: 34.8893482, accuracy: 8 },
+    "inside-avgad": { latitude: 32.1441405, longitude: 34.8398525, accuracy: 8 },
+    "inside-electric": { latitude: 32.853151, longitude: 35.0828546, accuracy: 8 },
+  };
+  return locations[mode] || null;
+}
+
+function getDevGpsTestError(mode) {
+  const errors = {
+    "permission-denied": createGeolocationError("Dev GPS test: permission denied.", 1),
+    unavailable: createGeolocationError("Dev GPS test: GPS unavailable.", 2),
+    timeout: createGeolocationError("Dev GPS test: GPS timeout.", 3),
+    insecure: createGeolocationError("Dev GPS test: insecure context.", GEOLOCATION_ERROR_CODES.INSECURE_CONTEXT),
+  };
+  return errors[mode] || null;
+}
+
 export function getCurrentLocation() {
   return new Promise((resolve, reject) => {
+    const devGpsTestMode = getDevGpsTestMode();
+    const devGpsTestError = getDevGpsTestError(devGpsTestMode);
+    if (devGpsTestError) {
+      reject(devGpsTestError);
+      return;
+    }
+
+    const devGpsTestLocation = getDevGpsTestLocation(devGpsTestMode);
+    if (devGpsTestLocation) {
+      resolve(devGpsTestLocation);
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      reject(createGeolocationError("Geolocation requires a secure context.", GEOLOCATION_ERROR_CODES.INSECURE_CONTEXT));
+      return;
+    }
+
     if (!navigator.geolocation) {
-      const error = new Error("Geolocation is not supported.");
-      error.code = 0;
-      reject(error);
+      reject(createGeolocationError("Geolocation is not supported.", GEOLOCATION_ERROR_CODES.UNSUPPORTED));
       return;
     }
 
@@ -202,7 +259,7 @@ export function getCurrentLocation() {
       (error) => reject(error),
       {
         enableHighAccuracy: true,
-        timeout: 15000,
+        timeout: GPS_REQUEST_TIMEOUT_MS,
         maximumAge: 30000,
       },
     );

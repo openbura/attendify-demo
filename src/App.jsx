@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { siteDefinitions, statusReasons, workbookWorkers } from "./data/adminDemoData.js";
+import { MINIMUM_HOURLY_RATE_ILS, siteDefinitions, statusReasons, workbookWorkers, workerCredentials } from "./data/adminDemoData.js";
 import {
   DEFAULT_SITE_GPS_SETTINGS,
+  GEOLOCATION_ERROR_CODES,
   calculateDistanceMeters,
   geocodeAddress,
   getCurrentLocation,
   hasGoogleMapsApiKey,
+  isDevGpsTestModeActive,
   isWithinAllowedRadius,
   searchAddressSuggestions,
 } from "./utils/gps.js";
@@ -22,27 +24,27 @@ import {
   isSameDate,
 } from "./utils/dates.js";
 
-const WORKER_USERNAME = "123";
-const WORKER_PASSWORD = "123";
 const ADMIN_USERNAME = "111";
 const ADMIN_PASSWORD = "111";
-const ADMIN_STORAGE_KEY = "connex-admin-workers-live-v1";
-const WORKER_RECORDS_STORAGE_KEY = "connex-worker-records-live-v1";
-const WORKER_ACTIVE_PUNCH_STORAGE_KEY = "connex-worker-active-punch-v1";
+const ADMIN_STORAGE_KEY = "connex-admin-workers-live-demo-june-2026-v1";
+const WORKER_RECORDS_STORAGE_KEY = "connex-worker-records-live-demo-june-2026-v1";
+const WORKER_ACTIVE_PUNCH_STORAGE_KEY = "connex-worker-active-punch-live-demo-june-2026-v1";
 const WORKER_LANGUAGE_STORAGE_KEY = "connex-worker-language";
 const ADMIN_LANGUAGE_STORAGE_KEY = "connex-admin-language";
 const LEGACY_GPS_SETTINGS_STORAGE_KEY = "connex-site-gps-settings-v2";
-const SITE_SETTINGS_STORAGE_KEY = "connex-site-settings-v1";
-const DEMO_WORKER_SITE_ID = "dania";
+const SITE_SETTINGS_STORAGE_KEY = "connex-site-settings-live-demo-june-2026-v1";
+const DEMO_WORKER_SITE_ID = siteDefinitions[0].id;
 const DEFAULT_WORK_DAY_START = "07:00";
 const DEFAULT_WORK_DAY_END = "19:00";
 const DEFAULT_ROUNDING_RULE = "site-day-cap";
 const DEFAULT_ROUNDING_TOLERANCE_MINUTES = 15;
 const ROUNDING_TOLERANCE_OPTIONS = [0, 10, 15, 20, 30];
+const MIN_GPS_CHECKING_MS = 1200;
 
 const fieldInitialState = { workerId: "", password: "" };
 
 const workerLanguages = [
+  { code: "he", enLabel: "Hebrew", heLabel: "עברית" },
   { code: "en", enLabel: "English", heLabel: "אנגלית" },
   { code: "th", enLabel: "Thai", heLabel: "תאילנדית", nativeLabel: "ไทย" },
   { code: "ro", enLabel: "Romanian", heLabel: "רומנית", nativeLabel: "Română" },
@@ -78,7 +80,7 @@ const translations = {
     passwordPlaceholder: "Enter password",
     signIn: "Sign In",
     languageLabel: "Language",
-    demoCredentials: "Worker 123 / 123 · Admin 111 / 111",
+    demoCredentials: "Worker assigned credentials · Admin 111 / 111",
     adminNavDashboard: "Dashboard",
     today: "Today",
     liveClock: "Live clock",
@@ -95,9 +97,9 @@ const translations = {
     contractorManager: "Contractor / site manager",
     projectStatus: "Project status",
     emptyFieldsError: "Please enter both username and password.",
-    invalidCredentialsError: "Use demo credentials: worker 123 / 123 or admin 111 / 111.",
+    invalidCredentialsError: "Invalid username or password. Workers must use their assigned live-demo credentials.",
     logout: "Log out",
-    workerName: "MINGQIANG SONG",
+    workerName: "Worker",
     passportNumber: "Passport number:",
     country: "Country",
     countryValue: "China",
@@ -260,9 +262,9 @@ Object.assign(translations.th, {
   passwordPlaceholder: "กรอกรหัสผ่าน",
   signIn: "เข้าสู่ระบบ",
   languageLabel: "ภาษา",
-  demoCredentials: "คนงาน 123 / 123 · ผู้ดูแล 111 / 111",
+  demoCredentials: "คนงาน assigned credentials · ผู้ดูแล 111 / 111",
   emptyFieldsError: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน",
-  invalidCredentialsError: "ใช้บัญชีตัวอย่าง: คนงาน 123 / 123 หรือผู้ดูแล 111 / 111",
+  invalidCredentialsError: "ใช้บัญชีตัวอย่าง: คนงาน assigned credentials หรือผู้ดูแล 111 / 111",
 });
 
 Object.assign(translations.hi, {
@@ -274,9 +276,9 @@ Object.assign(translations.hi, {
   passwordPlaceholder: "पासवर्ड दर्ज करें",
   signIn: "साइन इन",
   languageLabel: "भाषा",
-  demoCredentials: "वर्कर 123 / 123 · एडमिन 111 / 111",
+  demoCredentials: "वर्कर assigned credentials · एडमिन 111 / 111",
   emptyFieldsError: "कृपया उपयोगकर्ता नाम और पासवर्ड दोनों दर्ज करें।",
-  invalidCredentialsError: "डेमो लॉगिन उपयोग करें: वर्कर 123 / 123 या एडमिन 111 / 111।",
+  invalidCredentialsError: "डेमो लॉगिन उपयोग करें: वर्कर assigned credentials या एडमिन 111 / 111।",
 });
 
 Object.assign(translations.ro, {
@@ -288,9 +290,9 @@ Object.assign(translations.ro, {
   passwordPlaceholder: "Introdu parola",
   signIn: "Intră în cont",
   languageLabel: "Limbă",
-  demoCredentials: "Lucrător 123 / 123 · Admin 111 / 111",
+  demoCredentials: "Lucrător assigned credentials · Admin 111 / 111",
   emptyFieldsError: "Introdu utilizatorul și parola.",
-  invalidCredentialsError: "Folosește datele demo: lucrător 123 / 123 sau admin 111 / 111.",
+  invalidCredentialsError: "Folosește datele demo: lucrător assigned credentials sau admin 111 / 111.",
 });
 
 Object.assign(translations.si, {
@@ -302,9 +304,9 @@ Object.assign(translations.si, {
   passwordPlaceholder: "මුරපදය ඇතුළත් කරන්න",
   signIn: "පිවිසෙන්න",
   languageLabel: "භාෂාව",
-  demoCredentials: "සේවක 123 / 123 · පරිපාලක 111 / 111",
+  demoCredentials: "සේවක assigned credentials · පරිපාලක 111 / 111",
   emptyFieldsError: "කරුණාකර පරිශීලක නාමය සහ මුරපදය ඇතුළත් කරන්න.",
-  invalidCredentialsError: "ඩෙමෝ පිවිසුම් භාවිත කරන්න: සේවක 123 / 123 හෝ පරිපාලක 111 / 111.",
+  invalidCredentialsError: "ඩෙමෝ පිවිසුම් භාවිත කරන්න: සේවක assigned credentials හෝ පරිපාලක 111 / 111.",
 });
 
 Object.assign(translations.zh, {
@@ -327,9 +329,9 @@ Object.assign(translations.he, {
   passwordPlaceholder: "הזן סיסמה",
   signIn: "כניסה",
   emptyFieldsError: "יש להזין שם משתמש וסיסמה.",
-  invalidCredentialsError: "פרטי הדמו הם עובד 123 / 123 או מנהל 111 / 111.",
+  invalidCredentialsError: "פרטי הדמו הם עובד assigned credentials או מנהל 111 / 111.",
   logout: "יציאה מהחשבון",
-  workerName: "MINGQIANG SONG",
+  workerName: "Worker",
   passportNumber: "מספר דרכון:",
   country: "מדינה:",
   countryValue: "סין",
@@ -386,7 +388,7 @@ Object.assign(translations.he, {
 
 Object.assign(translations.he, {
   languageLabel: "שפה",
-  demoCredentials: "עובד 123 / 123 · מנהל 111 / 111",
+  demoCredentials: "עובד assigned credentials · מנהל 111 / 111",
   adminNavDashboard: "דשבורד",
   siteHealth: "מצב אתרים",
   sitesNeedingAttention: "אתרים שדורשים תשומת לב",
@@ -408,7 +410,7 @@ Object.assign(translations.he, {
   passwordPlaceholder: "הזן סיסמה",
   signIn: "כניסה",
   emptyFieldsError: "יש להזין שם משתמש וסיסמה.",
-  invalidCredentialsError: "פרטי הדמו הם עובד 123 / 123 או מנהל 111 / 111.",
+  invalidCredentialsError: "פרטי הדמו הם עובד assigned credentials או מנהל 111 / 111.",
   logout: "יציאה מהחשבון",
   passportNumber: "מספר דרכון:",
   country: "מדינה",
@@ -470,7 +472,7 @@ for (const code of Object.keys(translations)) {
 
 Object.assign(translations.he, {
   languageLabel: "שפה",
-  demoCredentials: "עובד 123 / 123 · מנהל 111 / 111",
+  demoCredentials: "עובד assigned credentials · מנהל 111 / 111",
   adminNavDashboard: "דשבורד",
   today: "היום",
   liveClock: "שעון חי",
@@ -579,6 +581,90 @@ Object.assign(translations.he, {
   checkoutGpsNotVerified: "היציאה נשמרה. עדות GPS לא הייתה זמינה.",
 });
 
+Object.assign(translations.en, {
+  demoCredentials: "Workers use assigned credentials · Admin 111 / 111",
+  invalidCredentialsError: "Invalid username or password. Workers must use their assigned live-demo credentials.",
+  workerName: "Worker",
+  countryValue: "",
+  assignedSite: "Assigned site",
+  siteAddressLabel: "Address",
+  workerSiteFallbackTitle: "Choose the correct site",
+  workerSiteFallbackMessage: "It looks like you are not near your assigned site. If you moved today to another site, choose the correct site and we will check your location again.",
+  checkThisSite: "Check this site",
+  retryLocation: "Retry location",
+  checkingSelectedSite: "Checking site...",
+  selectedSiteStillTooFar: "You are still outside {siteName}. Choose another site or retry location.",
+  siteChangedForToday: "Location approved for {siteName}. Check-in saved for this site.",
+  hourlyRate: "Hourly rate",
+  paymentTotalHours: "Total hours",
+  totalPayment: "Total payment",
+  siteMonthlyHoursValue: "Monthly site hours",
+  minimumWageHoursValue: "Minimum-wage value",
+  minimumWageRateUsed: "Rate used",
+  perHour: "per hour",
+  locationPermissionDenied: "Location permission is blocked. Allow location access and try again.",
+  locationGpsUnavailable: "GPS is unavailable right now. Turn on location services and try again.",
+  locationTimeout: "Location check timed out. Move to an open area and try again.",
+  locationInsecureContext: "Real mobile GPS is blocked on this non-secure HTTP address. Use HTTPS for real GPS, or open a dev-only GPS test URL.",
+  gpsDevModeNotice: "Local GPS test mode is active - not for the regular demo.",
+});
+
+for (const code of ["th", "hi", "ro", "si", "zh"]) {
+  Object.assign(translations[code], {
+    demoCredentials: translations.en.demoCredentials,
+    invalidCredentialsError: translations.en.invalidCredentialsError,
+    assignedSite: translations.en.assignedSite,
+    siteAddressLabel: translations.en.siteAddressLabel,
+    workerSiteFallbackTitle: translations.en.workerSiteFallbackTitle,
+    workerSiteFallbackMessage: translations.en.workerSiteFallbackMessage,
+    checkThisSite: translations.en.checkThisSite,
+    retryLocation: translations.en.retryLocation,
+    checkingSelectedSite: translations.en.checkingSelectedSite,
+    selectedSiteStillTooFar: translations.en.selectedSiteStillTooFar,
+    siteChangedForToday: translations.en.siteChangedForToday,
+    hourlyRate: translations.en.hourlyRate,
+    paymentTotalHours: translations.en.paymentTotalHours,
+    totalPayment: translations.en.totalPayment,
+    siteMonthlyHoursValue: translations.en.siteMonthlyHoursValue,
+    minimumWageHoursValue: translations.en.minimumWageHoursValue,
+    minimumWageRateUsed: translations.en.minimumWageRateUsed,
+    perHour: translations.en.perHour,
+    locationPermissionDenied: translations.en.locationPermissionDenied,
+    locationGpsUnavailable: translations.en.locationGpsUnavailable,
+    locationTimeout: translations.en.locationTimeout,
+    locationInsecureContext: translations.en.locationInsecureContext,
+    gpsDevModeNotice: translations.en.gpsDevModeNotice,
+  });
+}
+
+Object.assign(translations.he, {
+  demoCredentials: "עובדים נכנסים עם הפרטים האישיים מהרשימה · מנהל 111 / 111",
+  invalidCredentialsError: "שם המשתמש או הסיסמה לא נכונים. עובד צריך להשתמש בפרטי ההתחברות האישיים מהרשימה.",
+  workerName: "עובד",
+  countryValue: "",
+  assignedSite: "אתר משויך",
+  siteAddressLabel: "כתובת",
+  workerSiteFallbackTitle: "בחירת אתר נכון להיום",
+  workerSiteFallbackMessage: "נראה שאתה לא נמצא באתר שמוגדר לך כרגע. אם עברת היום לאתר אחר, בחר את האתר הנכון ונבדוק שוב את המיקום שלך.",
+  checkThisSite: "בדוק אתר זה",
+  retryLocation: "בדוק מיקום שוב",
+  checkingSelectedSite: "בודק את האתר...",
+  selectedSiteStillTooFar: "המיקום עדיין לא בתוך הטווח של {siteName}. אפשר לבחור אתר אחר או לבדוק שוב את המיקום.",
+  siteChangedForToday: "המיקום אושר עבור {siteName}. הכניסה נשמרה באתר זה.",
+  hourlyRate: "מחיר לשעה",
+  paymentTotalHours: "סה״כ שעות",
+  totalPayment: "סה״כ לתשלום",
+  siteMonthlyHoursValue: "סה״כ שעות באתר החודש",
+  minimumWageHoursValue: "שווי לפי שכר מינימום",
+  minimumWageRateUsed: "תעריף לחישוב",
+  perHour: "לשעה",
+  locationPermissionDenied: "הרשאת המיקום חסומה. יש לאשר גישה למיקום ולנסות שוב.",
+  locationGpsUnavailable: "שירות המיקום לא זמין כרגע. יש לוודא שה-GPS פעיל ולנסות שוב.",
+  locationTimeout: "בדיקת המיקום נמשכה יותר מדי זמן. כדאי לעבור לאזור פתוח ולנסות שוב.",
+  locationInsecureContext: "GPS אמיתי במובייל חסום בכתובת HTTP לא מאובטחת. לבדיקת GPS אמיתי צריך HTTPS, או לפתוח קישור בדיקת GPS מקומי.",
+  gpsDevModeNotice: "מצב בדיקת GPS מקומי פעיל - לא לשימוש בדמו רגיל.",
+});
+
 function timeToMinutes(time) {
   if (!time) return null;
   const [hours, minutes] = time.split(":").map(Number);
@@ -591,24 +677,26 @@ function formatMinutes(minutes) {
   return `${String(hours).padStart(2, "0")}:${String(remainingMinutes).padStart(2, "0")}`;
 }
 
-const defaultSiteAddresses = {
-  dania: DEFAULT_SITE_GPS_SETTINGS.siteAddress,
-  golomb: "גולומב 38, רמת השרון",
-  forma: "תל אביב-יפו",
-};
+const defaultSiteAddresses = Object.fromEntries(
+  siteDefinitions.map((site) => [site.id, site.address || site.location || site.name]),
+);
 
 const defaultSiteCoordinates = {
-  dania: {
+  "naomi-shemer": {
     latitude: DEFAULT_SITE_GPS_SETTINGS.latitude,
     longitude: DEFAULT_SITE_GPS_SETTINGS.longitude,
   },
-  golomb: {
-    latitude: 32.1467,
-    longitude: 34.8397,
+  avgad: {
+    latitude: 32.1441405,
+    longitude: 34.8398525,
   },
-  forma: {
-    latitude: 32.0853,
-    longitude: 34.7818,
+  "electric-company": {
+    latitude: 32.853151,
+    longitude: 35.0828546,
+  },
+  "forma-tel-aviv": {
+    latitude: 32.110132,
+    longitude: 34.796307,
   },
 };
 
@@ -623,7 +711,7 @@ function normalizeTimeValue(value, fallback) {
 }
 
 function getDefaultSiteSettingsForSite(site) {
-  const coordinates = defaultSiteCoordinates[site.id] || defaultSiteCoordinates.dania;
+  const coordinates = defaultSiteCoordinates[site.id] || defaultSiteCoordinates[DEMO_WORKER_SITE_ID];
   return {
     siteId: site.id,
     siteName: site.name,
@@ -832,22 +920,8 @@ function formatText(template, values = {}) {
   return Object.entries(values).reduce((message, [key, value]) => message.replaceAll(`{${key}}`, value), template || "");
 }
 
-function getInitialWorkerRecords(referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
-  const siteSetting = getSiteSetting(siteSettings, DEMO_WORKER_SITE_ID);
-  return getCurrentMonthDates(referenceDate)
-    .filter((date) => !isSameDate(date, referenceDate))
-    .map((date, index) => {
-      const times = getDeterministicAttendance(1, index + 1);
-      return applyAttendanceRules({
-        id: index + 1,
-        date,
-        siteId: DEMO_WORKER_SITE_ID,
-        actualEntryTime: times.entry,
-        actualExitTime: times.exit,
-        entry: times.entry,
-        exit: times.exit,
-      }, siteSetting);
-    });
+function getInitialWorkerRecords() {
+  return [];
 }
 
 function normalizeWorkerRecord(record, siteSettings = getDefaultSiteSettingsMap()) {
@@ -861,10 +935,10 @@ function normalizeWorkerRecord(record, siteSettings = getDefaultSiteSettingsMap(
 function mergeWorkerRecords(baseRecords = [], storedRecords = [], siteSettings = getDefaultSiteSettingsMap()) {
   const recordsByDate = new Map();
   for (const record of baseRecords) {
-    if (record?.date) recordsByDate.set(record.date, record);
+    if (record?.date) recordsByDate.set(`${record.workerId || "legacy"}-${record.date}`, record);
   }
   for (const record of storedRecords) {
-    if (record?.date) recordsByDate.set(record.date, normalizeWorkerRecord(record, siteSettings));
+    if (record?.date) recordsByDate.set(`${record.workerId || "legacy"}-${record.date}`, normalizeWorkerRecord(record, siteSettings));
   }
   return Array.from(recordsByDate.values());
 }
@@ -883,6 +957,15 @@ function getPersistableWorkerRecords(records = []) {
   return records.filter((record) => record?.source === "live" || record?.gpsEvidence || record?.checkInGpsEvidence || record?.checkOutGpsEvidence);
 }
 
+function getWorkerLogin(username, password) {
+  return workerCredentials.find((credential) => credential.username === username && credential.password === password) || null;
+}
+
+function getWorkerRecords(records = [], workerId) {
+  if (!workerId) return [];
+  return records.filter((record) => Number(record.workerId) === Number(workerId));
+}
+
 function getRecordsForMonth(records, referenceDate = new Date()) {
   const monthId = getMonthId(referenceDate);
   return records.filter((record) => isDateInMonth(record.date, monthId));
@@ -896,10 +979,12 @@ function getDailyReportDates(monthId, referenceDate = new Date()) {
 function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
   const hasStatus = Boolean(worker.status);
   const todayDate = getTodayDate(referenceDate);
+  const hourlyRate = normalizeHourlyRate(worker.hourlyRate);
 
   if (hasStatus) {
     return {
       ...worker,
+      hourlyRate,
       date: todayDate,
       entry: "",
       exit: "",
@@ -908,11 +993,25 @@ function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
     };
   }
 
+  if (worker.source === "live" && worker.entry && !worker.exit) {
+    return {
+      ...worker,
+      hourlyRate,
+      date: worker.date || todayDate,
+      actualEntryTime: worker.actualEntryTime || worker.entry,
+      actualExitTime: "",
+      entry: worker.entry,
+      exit: "",
+      status: "",
+    };
+  }
+
   const hasCompleteTimes = Boolean(worker.entry && worker.exit);
   const generatedTimes = hasCompleteTimes ? { entry: worker.entry, exit: worker.exit } : getDeterministicAttendance(worker.id, index);
 
   return {
     ...worker,
+    hourlyRate,
     date: todayDate,
     actualEntryTime: worker.actualEntryTime || generatedTimes.entry,
     actualExitTime: worker.actualExitTime || generatedTimes.exit,
@@ -934,6 +1033,41 @@ function getMonthlyTotal(records, siteSetting) {
   return formatMinutes(records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0));
 }
 
+function normalizeHourlyRate(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : MINIMUM_HOURLY_RATE_ILS;
+}
+
+function getWorkerHourlyRate(worker) {
+  return normalizeHourlyRate(worker?.hourlyRate);
+}
+
+function getWorkerPaymentSummary(records, siteSetting, hourlyRate) {
+  const totalMinutes = records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0);
+  const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+  return {
+    totalMinutes,
+    totalHours,
+    totalPayment: totalHours * hourlyRate,
+  };
+}
+
+function formatPaymentHours(hours, language = "he") {
+  return new Intl.NumberFormat(language === "he" ? "he-IL" : "en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(hours) ? hours : 0);
+}
+
+function formatCurrencyAmount(value, language = "he") {
+  return new Intl.NumberFormat(language === "he" ? "he-IL" : "en-US", {
+    style: "currency",
+    currency: "ILS",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
 function getInitialWorkerLanguage() {
   const savedLanguage = localStorage.getItem(WORKER_LANGUAGE_STORAGE_KEY);
   return workerLanguages.some((item) => item.code === savedLanguage) ? savedLanguage : "en";
@@ -941,7 +1075,7 @@ function getInitialWorkerLanguage() {
 
 function getInitialAdminLanguage() {
   const savedLanguage = localStorage.getItem(ADMIN_LANGUAGE_STORAGE_KEY);
-  return adminLanguages.some((item) => item.code === savedLanguage) ? savedLanguage : "en";
+  return adminLanguages.some((item) => item.code === savedLanguage) ? savedLanguage : "he";
 }
 
 function getLanguageOptionLabel(item, currentLanguage, context) {
@@ -951,7 +1085,15 @@ function getLanguageOptionLabel(item, currentLanguage, context) {
 function getStoredAdminWorkers() {
   try {
     const stored = JSON.parse(localStorage.getItem(ADMIN_STORAGE_KEY) || "null");
-    return Array.isArray(stored) ? getNormalizedAdminWorkers(stored) : getNormalizedAdminWorkers(workbookWorkers);
+    if (Array.isArray(stored)) {
+      const currentSeedWorkers = new Map(workbookWorkers.map((worker) => [Number(worker.id), worker]));
+      return getNormalizedAdminWorkers(stored.map((worker) => ({
+        ...worker,
+        hourlyRate: currentSeedWorkers.get(Number(worker.id))?.hourlyRate ?? worker.hourlyRate,
+        country: currentSeedWorkers.get(Number(worker.id))?.country || worker.country,
+      })));
+    }
+    return getNormalizedAdminWorkers(workbookWorkers);
   } catch {
     return getNormalizedAdminWorkers(workbookWorkers);
   }
@@ -965,10 +1107,32 @@ function formatGpsMessage(template, values) {
   return Object.entries(values).reduce((message, [key, value]) => message.replace(`{${key}}`, value), template);
 }
 
-function getStoredActivePunch() {
+function getLocationErrorMessage(error, t) {
+  if (error?.code === GEOLOCATION_ERROR_CODES.INSECURE_CONTEXT || /secure context|secure origin/i.test(error?.message || "")) {
+    return t.locationInsecureContext || t.locationUnavailable;
+  }
+  if (error?.code === GEOLOCATION_ERROR_CODES.UNSUPPORTED || error?.code === 0) return t.geolocationNotSupported || t.locationUnavailable;
+  if (error?.code === 1) return t.locationPermissionDenied || t.locationPermissionRequired;
+  if (error?.code === 2) return t.locationGpsUnavailable || t.locationUnavailable;
+  if (error?.code === 3) return t.locationTimeout || t.locationUnavailable;
+  return t.locationUnavailable;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function keepGpsCheckingStateVisible(startedAt) {
+  const remaining = MIN_GPS_CHECKING_MS - (Date.now() - startedAt);
+  if (remaining > 0) await wait(remaining);
+}
+
+function getStoredActivePunch(workerId = null) {
   try {
     const storedPunch = JSON.parse(localStorage.getItem(WORKER_ACTIVE_PUNCH_STORAGE_KEY) || "null");
-    return storedPunch?.entryDate && storedPunch?.entryTime ? storedPunch : null;
+    if (!storedPunch?.entryDate || !storedPunch?.entryTime) return null;
+    if (workerId && Number(storedPunch.workerId) !== Number(workerId)) return null;
+    return storedPunch;
   } catch {
     return null;
   }
@@ -1058,6 +1222,7 @@ function getWorkerFullName(worker) {
 }
 
 const countryLabels = {
+  Nepal: { en: "Nepal", he: "נפאל" },
   "סין": { en: "China", he: "סין" },
   "תאילנד": { en: "Thailand", he: "תאילנד" },
   "הודו": { en: "India", he: "הודו" },
@@ -1162,11 +1327,15 @@ function getSiteReportTotals(workers, siteId, monthId = getDefaultReportMonthId(
   }, { daysWorked: 0, missingDays: 0, minutes: 0 });
 
   const totalDays = totals.daysWorked + totals.missingDays;
+  const monthlyHoursDecimal = Math.round((totals.minutes / 60) * 100) / 100;
   return {
     totalWorkers: siteWorkers.length,
     daysWorked: totals.daysWorked,
     missingDays: totals.missingDays,
     monthlyHours: formatMinutes(totals.minutes),
+    monthlyHoursDecimal,
+    minimumWageValue: monthlyHoursDecimal * MINIMUM_HOURLY_RATE_ILS,
+    minimumHourlyRate: MINIMUM_HOURLY_RATE_ILS,
     attendance: totalDays ? Math.round((totals.daysWorked / totalDays) * 100) : 0,
   };
 }
@@ -1239,9 +1408,10 @@ function App() {
   const [adminView, setAdminView] = useState("dashboard");
   const [activeSiteId, setActiveSiteId] = useState(siteDefinitions[0].id);
   const [activeWorkerId, setActiveWorkerId] = useState(null);
+  const [loggedInWorkerId, setLoggedInWorkerId] = useState(null);
   const [workerHistoryBackView, setWorkerHistoryBackView] = useState("site");
   const [siteSettings, setSiteSettings] = useState(getStoredSiteSettings);
-  const [activePunch, setActivePunch] = useState(getStoredActivePunch);
+  const [activePunch, setActivePunch] = useState(null);
   const [records, setRecords] = useState(() => getStoredWorkerRecords(new Date(), getStoredSiteSettings()));
   const [adminWorkers, setAdminWorkers] = useState(getStoredAdminWorkers);
   const [workerLanguage, setWorkerLanguage] = useState(getInitialWorkerLanguage);
@@ -1250,10 +1420,13 @@ function App() {
   const [selectedReportMonth, setSelectedReportMonth] = useState(() => getDefaultReportMonthId());
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [gpsStatus, setGpsStatus] = useState(null);
+  const [gpsFallback, setGpsFallback] = useState(null);
+  const [checkingSiteId, setCheckingSiteId] = useState(null);
 
   const language = screen === "admin" ? adminLanguage : workerLanguage;
   const t = useMemo(() => translations[language], [language]);
   const isRtl = language === "he";
+  const isGpsDevMode = isDevGpsTestModeActive();
   const isCheckedIn = Boolean(activePunch);
   const activeEntryDate = activePunch?.entryDate || "";
   const activeEntryTime = activePunch?.entryTime || "";
@@ -1261,7 +1434,16 @@ function App() {
   const currentMonthId = getMonthId(clock);
   const currentMonthWorkerRecords = useMemo(() => getRecordsForMonth(records, clock), [records, currentMonthId]);
   const currentMonthLabel = getMonthLabel(currentMonthId, language);
-  const workerSiteSetting = useMemo(() => getSiteSetting(siteSettings, DEMO_WORKER_SITE_ID), [siteSettings]);
+  const loggedInWorker = useMemo(
+    () => adminWorkers.find((worker) => Number(worker.id) === Number(loggedInWorkerId)) || null,
+    [adminWorkers, loggedInWorkerId],
+  );
+  const workerSiteId = loggedInWorker?.siteId || DEMO_WORKER_SITE_ID;
+  const workerSiteSetting = useMemo(() => getSiteSetting(siteSettings, workerSiteId), [siteSettings, workerSiteId]);
+  const activeWorkerRecords = useMemo(
+    () => getWorkerRecords(currentMonthWorkerRecords, loggedInWorkerId),
+    [currentMonthWorkerRecords, loggedInWorkerId],
+  );
 
   useEffect(() => {
     localStorage.setItem(WORKER_LANGUAGE_STORAGE_KEY, workerLanguage);
@@ -1326,8 +1508,13 @@ function App() {
       return;
     }
 
-    if (username === WORKER_USERNAME && password === WORKER_PASSWORD) {
+    const workerLogin = getWorkerLogin(username, password);
+    if (workerLogin) {
       setShowError(false);
+      setLoggedInWorkerId(workerLogin.workerId);
+      setActivePunch(getStoredActivePunch(workerLogin.workerId));
+      setGpsStatus(null);
+      setGpsFallback(null);
       setScreen("dashboard");
       return;
     }
@@ -1345,99 +1532,160 @@ function App() {
 
   const handleLogout = () => {
     setScreen("login");
+    setLoggedInWorkerId(null);
     setFields(fieldInitialState);
     setShowError(false);
+    setGpsStatus(null);
+    setGpsFallback(null);
     setAdminView("dashboard");
   };
 
-  const handleAttendanceToggle = async () => {
-    if (isCheckingLocation) return;
+  const completeWorkerCheckIn = ({ siteId, siteSetting, evidence }) => {
+    const entryDate = new Date();
+    const entryDateLabel = getTodayDate(entryDate);
+    const entryTime = formatCurrentTime(entryDate);
+    const site = siteDefinitions.find((item) => item.id === siteId);
 
-    if (!isCheckedIn) {
-      setIsCheckingLocation(true);
-      setGpsStatus({ type: "info", message: t.checkingLocation });
+    setActivePunch({
+      workerId: loggedInWorkerId,
+      entryDate: entryDateLabel,
+      entryTime,
+      siteId,
+      checkInGpsEvidence: evidence,
+    });
+    setRecords((currentRecords) => [
+      applyAttendanceRules({
+        id: Date.now(),
+        workerId: loggedInWorkerId,
+        date: entryDateLabel,
+        siteId,
+        actualEntryTime: entryTime,
+        actualExitTime: "",
+        entry: entryTime,
+        exit: "",
+        source: "live",
+        checkInGpsEvidence: evidence,
+        gpsEvidence: {
+          checkIn: evidence,
+          checkOut: null,
+        },
+      }, siteSetting),
+      ...currentRecords.filter((record) => !(Number(record.workerId) === Number(loggedInWorkerId) && isSameDate(record.date, entryDateLabel))),
+    ]);
+    setAdminWorkers((workers) =>
+      workers.map((worker, index) =>
+        Number(worker.id) === Number(loggedInWorkerId)
+          ? normalizeAdminWorker({
+              ...worker,
+              siteId,
+              date: entryDateLabel,
+              actualEntryTime: entryTime,
+              actualExitTime: "",
+              entry: entryTime,
+              exit: "",
+              status: "",
+              source: "live",
+            }, index, entryDate)
+          : worker,
+      ),
+    );
+    setGpsFallback(null);
+    setGpsStatus({
+      type: "success",
+      message: formatText(siteId === workerSiteId ? t.withinRangeApproved : t.siteChangedForToday, { siteName: site?.name || "" }),
+    });
+  };
 
-      try {
-        const { evidence, radiusResult, error } = await captureGpsEvidence("check-in", workerSiteSetting);
-        if (error) {
-          setGpsStatus({ type: "error", message: t.siteSettingsInvalid || t.gpsSettingsInvalid });
-          return;
-        }
+  const attemptWorkerCheckIn = async (siteId) => {
+    if (!loggedInWorker || isCheckingLocation) return;
+    const siteSetting = getSiteSetting(siteSettings, siteId);
+    const site = siteDefinitions.find((item) => item.id === siteId);
+    const isAssignedSite = siteId === workerSiteId;
 
-        if (!radiusResult.isWithinRadius) {
-          setGpsStatus({
-            type: "error",
-            message: formatGpsMessage(t.tooFarFromSiteWithDistance, {
-              distance: formatDistanceMeters(radiusResult.distanceMeters),
-              radius: formatDistanceMeters(workerSiteSetting.radiusMeters),
-            }),
-          });
-          return;
-        }
+    setGpsFallback((currentFallback) =>
+      isAssignedSite
+        ? null
+        : { ...(currentFallback || {}), assignedSiteId: workerSiteId, selectedSiteId: siteId },
+    );
+    setIsCheckingLocation(true);
+    setCheckingSiteId(siteId);
+    setGpsStatus({ type: "info", message: isAssignedSite ? t.checkingLocation : t.checkingSelectedSite || t.checkingLocation });
+    const gpsStartedAt = Date.now();
 
-        const entryDate = new Date();
-        const entryDateLabel = getTodayDate(entryDate);
-        const entryTime = formatCurrentTime(entryDate);
-        setActivePunch({
-          entryDate: entryDateLabel,
-          entryTime,
-          siteId: DEMO_WORKER_SITE_ID,
-          checkInGpsEvidence: evidence,
-        });
-        setRecords((currentRecords) => [
-          applyAttendanceRules({
-            id: Date.now(),
-            date: entryDateLabel,
-            siteId: DEMO_WORKER_SITE_ID,
-            actualEntryTime: entryTime,
-            actualExitTime: "",
-            entry: entryTime,
-            exit: "",
-            source: "live",
-            checkInGpsEvidence: evidence,
-            gpsEvidence: {
-              checkIn: evidence,
-              checkOut: null,
-            },
-          }, workerSiteSetting),
-          ...currentRecords.filter((record) => !isSameDate(record.date, entryDateLabel)),
-        ]);
-        setGpsStatus({ type: "success", message: t.withinRangeApproved });
-      } catch (error) {
+    try {
+      const { evidence, radiusResult, error } = await captureGpsEvidence("check-in", siteSetting);
+      await keepGpsCheckingStateVisible(gpsStartedAt);
+      if (error) {
+        setGpsFallback(null);
+        setGpsStatus({ type: "error", message: t.siteSettingsInvalid || t.gpsSettingsInvalid, canRetry: true });
+        return;
+      }
+
+      if (!radiusResult.isWithinRadius) {
+        setGpsFallback({ assignedSiteId: workerSiteId, lastAttemptedSiteId: siteId });
         setGpsStatus({
           type: "error",
-          message: error?.code === 1 ? t.locationPermissionRequired : t.locationUnavailable,
+          message: siteId === workerSiteId
+            ? t.workerSiteFallbackMessage
+            : formatText(t.selectedSiteStillTooFar, { siteName: site?.name || "" }),
         });
-      } finally {
-        setIsCheckingLocation(false);
+        return;
       }
+
+      completeWorkerCheckIn({ siteId, siteSetting, evidence });
+    } catch (error) {
+      await keepGpsCheckingStateVisible(gpsStartedAt);
+      setGpsFallback(null);
+      setGpsStatus({
+        type: "error",
+        message: getLocationErrorMessage(error, t),
+        canRetry: true,
+      });
+    } finally {
+      setIsCheckingLocation(false);
+      setCheckingSiteId(null);
+    }
+  };
+
+  const handleAttendanceToggle = async () => {
+    if (isCheckingLocation || !loggedInWorker) return;
+
+    if (!isCheckedIn) {
+      await attemptWorkerCheckIn(workerSiteId);
       return;
     }
 
+    const checkOutSiteId = activePunch?.siteId || workerSiteId;
+    const checkOutSiteSetting = getSiteSetting(siteSettings, checkOutSiteId);
     setIsCheckingLocation(true);
+    setCheckingSiteId(checkOutSiteId);
     setGpsStatus({ type: "info", message: t.checkingLocation });
     let checkOutGpsEvidence = null;
     try {
-      const { evidence } = await captureGpsEvidence("check-out", workerSiteSetting);
+      const { evidence } = await captureGpsEvidence("check-out", checkOutSiteSetting);
       checkOutGpsEvidence = evidence;
     } catch (error) {
-      checkOutGpsEvidence = createGpsEvidence({ action: "check-out", siteSetting: workerSiteSetting, error });
+      checkOutGpsEvidence = createGpsEvidence({ action: "check-out", siteSetting: checkOutSiteSetting, error });
     } finally {
       setIsCheckingLocation(false);
+      setCheckingSiteId(null);
     }
 
     const exitDate = new Date();
     const recordDate = getTodayDate(exitDate);
     const exitTime = formatCurrentTime(exitDate);
     const checkInGpsEvidence = activePunch?.checkInGpsEvidence || null;
+    const attendanceDate = activeEntryDate || recordDate;
+    const entryTime = activeEntryTime || formatCurrentTime(exitDate);
     setRecords((currentRecords) => [
       applyAttendanceRules({
         id: Date.now(),
-        date: activeEntryDate || recordDate,
-        siteId: DEMO_WORKER_SITE_ID,
-        actualEntryTime: activeEntryTime || formatCurrentTime(exitDate),
+        workerId: loggedInWorkerId,
+        date: attendanceDate,
+        siteId: checkOutSiteId,
+        actualEntryTime: entryTime,
         actualExitTime: exitTime,
-        entry: activeEntryTime || formatCurrentTime(exitDate),
+        entry: entryTime,
         exit: exitTime,
         source: "live",
         checkInGpsEvidence,
@@ -1446,10 +1694,28 @@ function App() {
           checkIn: checkInGpsEvidence,
           checkOut: checkOutGpsEvidence,
         },
-      }, workerSiteSetting),
-      ...currentRecords.filter((record) => !isSameDate(record.date, activeEntryDate || recordDate)),
+      }, checkOutSiteSetting),
+      ...currentRecords.filter((record) => !(Number(record.workerId) === Number(loggedInWorkerId) && isSameDate(record.date, attendanceDate))),
     ]);
+    setAdminWorkers((workers) =>
+      workers.map((worker, index) =>
+        Number(worker.id) === Number(loggedInWorkerId)
+          ? normalizeAdminWorker({
+              ...worker,
+              siteId: checkOutSiteId,
+              date: attendanceDate,
+              actualEntryTime: entryTime,
+              actualExitTime: exitTime,
+              entry: entryTime,
+              exit: exitTime,
+              status: "",
+              source: "live",
+            }, index, exitDate)
+          : worker,
+      ),
+    );
     setActivePunch(null);
+    setGpsFallback(null);
     setGpsStatus({
       type: checkOutGpsEvidence?.latitude ? "success" : "info",
       message: checkOutGpsEvidence?.latitude ? t.checkoutSavedWithGpsEvidence : t.checkoutGpsNotVerified,
@@ -1473,7 +1739,7 @@ function App() {
   if (screen === "history") {
     return (
       <DashboardShell t={t} isRtl={isRtl} language={language} onLanguageChange={handleWorkerLanguageChange} onLogout={handleLogout}>
-        <FullHistoryView t={t} records={currentMonthWorkerRecords} monthLabel={currentMonthLabel} siteSetting={workerSiteSetting} onBack={() => setScreen("dashboard")} />
+        <FullHistoryView t={t} records={activeWorkerRecords} monthLabel={currentMonthLabel} siteSetting={workerSiteSetting} onBack={() => setScreen("dashboard")} />
       </DashboardShell>
     );
   }
@@ -1483,13 +1749,23 @@ function App() {
       <DashboardShell t={t} isRtl={isRtl} language={language} onLanguageChange={handleWorkerLanguageChange} onLogout={handleLogout}>
         <WorkerDashboard
           t={t}
+          language={language}
           isCheckedIn={isCheckedIn}
           entryTime={activeEntryTime}
-          records={currentMonthWorkerRecords}
+          worker={loggedInWorker}
+          records={activeWorkerRecords}
           siteSetting={workerSiteSetting}
+          siteSettings={siteSettings}
+          currentSiteId={workerSiteId}
+          gpsFallback={gpsFallback}
+          checkingSiteId={checkingSiteId}
           onToggle={handleAttendanceToggle}
+          onSelectFallbackSite={attemptWorkerCheckIn}
+          onRetryAssignedSite={() => attemptWorkerCheckIn(workerSiteId)}
           isCheckingLocation={isCheckingLocation}
           gpsStatus={gpsStatus}
+          canRetryGps={Boolean(gpsStatus?.canRetry)}
+          isGpsDevMode={isGpsDevMode}
           onFullHistory={() => setScreen("history")}
         />
       </DashboardShell>
@@ -1635,7 +1911,6 @@ function App() {
             <LoginField id="password" name="password" type="password" value={fields.password} onChange={handleChange} label={t.passwordLabel} placeholder={t.passwordPlaceholder} icon="lock" />
             {showError ? <p className="form-error" role="alert">{loginErrorType === "empty" ? t.emptyFieldsError : t.invalidCredentialsError}</p> : null}
             <button type="submit">{t.signIn}</button>
-            <p className="login-demo-note">{t.demoCredentials}</p>
           </form>
         </section>
       </section>
@@ -1671,30 +1946,99 @@ function DashboardShell({ t, isRtl, language, onLanguageChange, onLogout, childr
   );
 }
 
-function WorkerDashboard({ t, isCheckedIn, entryTime, records, siteSetting, onToggle, isCheckingLocation, gpsStatus, onFullHistory }) {
+function WorkerDashboard({
+  t,
+  language,
+  worker,
+  isCheckedIn,
+  entryTime,
+  records,
+  siteSetting,
+  siteSettings,
+  currentSiteId,
+  gpsFallback,
+  checkingSiteId,
+  onToggle,
+  onSelectFallbackSite,
+  onRetryAssignedSite,
+  isCheckingLocation,
+  gpsStatus,
+  canRetryGps,
+  isGpsDevMode,
+  onFullHistory,
+}) {
+  const fallbackSites = siteDefinitions.filter((site) => site.id !== currentSiteId);
   return (
     <section className="worker-dashboard">
-      <WorkerCard t={t} isCheckedIn={isCheckedIn} />
+      <WorkerCard t={t} language={language} worker={worker} siteSetting={siteSetting} isCheckedIn={isCheckedIn} />
       <button className={isCheckedIn ? "attendance-button exit" : "attendance-button enter"} type="button" onClick={onToggle} disabled={isCheckingLocation}>
         <span className="attendance-main-text">{isCheckingLocation ? t.checkingLocation : isCheckedIn ? t.checkOut : t.checkIn}</span>
         {isCheckedIn ? <small className="attendance-time-text">{t.enteredAt.replace("{time}", entryTime || formatCurrentTime())}</small> : null}
       </button>
       {gpsStatus ? <p className={`gps-worker-message ${gpsStatus.type}`} role={gpsStatus.type === "error" ? "alert" : "status"}>{gpsStatus.message}</p> : null}
+      {isGpsDevMode ? <p className="gps-dev-mode-notice">{t.gpsDevModeNotice}</p> : null}
+      {canRetryGps && !gpsFallback ? (
+        <button className="gps-retry-button" type="button" onClick={onRetryAssignedSite} disabled={isCheckingLocation}>
+          {isCheckingLocation ? t.checkingLocation : t.retryLocation}
+        </button>
+      ) : null}
+      {gpsFallback ? (
+        <SiteFallbackSelector
+          t={t}
+          sites={fallbackSites}
+          siteSettings={siteSettings}
+          checkingSiteId={checkingSiteId}
+          isCheckingLocation={isCheckingLocation}
+          onSelectSite={onSelectFallbackSite}
+          onRetryAssignedSite={onRetryAssignedSite}
+        />
+      ) : null}
       <HistoryCard t={t} records={records.slice(0, 5)} siteSetting={siteSetting} onFullHistory={onFullHistory} />
     </section>
   );
 }
 
-function WorkerCard({ t, isCheckedIn }) {
+function WorkerCard({ t, language, worker, siteSetting, isCheckedIn }) {
+  const fullName = getWorkerFullName(worker);
+  const country = getCountryLabel(worker?.country, language);
   return (
     <section className="worker-card">
       <div className="worker-avatar" aria-hidden="true"><span className="avatar-helmet" /><span className="avatar-face" /><span className="avatar-shirt" /></div>
       <div className="worker-details">
-        <h1>{t.workerName}</h1>
-        <p>{t.passportNumber} <NumericToken className="passport-token">EL6998320</NumericToken></p>
-        <p>{t.country} <span>{t.countryValue}</span></p>
+        <h1>{fullName || t.workerName}</h1>
+        <p>{t.passportNumber} <NumericToken className="passport-token">{worker?.passport || ""}</NumericToken></p>
+        {country ? <p>{t.country} <span>{country}</span></p> : null}
+        <p>{t.assignedSite}: <span>{siteSetting.siteName}</span></p>
+        <p>{t.siteAddressLabel}: <span>{siteSetting.siteAddress}</span></p>
       </div>
       <div className={isCheckedIn ? "status-pill working" : "status-pill idle"}><span />{isCheckedIn ? t.statusWorking : t.statusNotWorking}</div>
+    </section>
+  );
+}
+
+function SiteFallbackSelector({ t, sites, siteSettings, checkingSiteId, isCheckingLocation, onSelectSite, onRetryAssignedSite }) {
+  return (
+    <section className="site-fallback-panel" aria-live="polite">
+      <div className="site-fallback-heading">
+        <h2>{t.workerSiteFallbackTitle}</h2>
+        <p>{t.workerSiteFallbackMessage}</p>
+      </div>
+      <div className="site-fallback-actions">
+        {sites.map((site) => {
+          const setting = getSiteSetting(siteSettings, site.id);
+          const isCheckingThisSite = isCheckingLocation && checkingSiteId === site.id;
+          return (
+            <button key={site.id} type="button" onClick={() => onSelectSite(site.id)} disabled={isCheckingLocation}>
+              <strong>{site.name}</strong>
+              <span>{setting.siteAddress}</span>
+              <small>{isCheckingThisSite ? t.checkingSelectedSite : t.checkThisSite}</small>
+            </button>
+          );
+        })}
+      </div>
+      <button className="site-fallback-retry" type="button" onClick={onRetryAssignedSite} disabled={isCheckingLocation}>
+        {isCheckingLocation ? t.checkingLocation : t.retryLocation}
+      </button>
     </section>
   );
 }
@@ -2329,7 +2673,7 @@ function SiteHealthCard({ site, metrics, t, onOpen }) {
       <div>
         <span className={metrics.missing ? "health-badge warning" : "health-badge ok"}>{site.status}</span>
         <h3>{site.name}</h3>
-        <p>{site.stage}</p>
+        <p>{site.address || site.location}</p>
       </div>
       <strong>{metrics.attendance}%</strong>
       <div className="site-health-progress"><i style={{ width: `${metrics.attendance}%` }} /></div>
@@ -2347,6 +2691,7 @@ function AdminSiteCard({ site, metrics, t, onClick }) {
     <button className="admin-site-card" type="button" onClick={onClick}>
       <img src={site.image} alt="" />
       <h3>{site.name}</h3>
+      <p>{site.address || site.location}</p>
       <div className="site-metrics">
         <Metric value={metrics.totalWorkers} label={t.totalWorkers} tone="blue" />
         <Metric value={metrics.missing} label={t.missingToday} tone="red" />
@@ -2392,7 +2737,7 @@ function AdminSiteWorkersView({ t, language, siteId, workers, clock, siteSetting
   return (
     <section className="admin-page site-workers-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
-      <PageTitle title={t.workersOnSite} subtitle={site.name} />
+      <PageTitle title={t.workersOnSite} subtitle={`${site.name} · ${site.address || site.location}`} />
       <div className="admin-summary-strip">
         <Metric value={metrics.missing} label={t.missingToday} tone="red" />
         <Metric value={metrics.totalWorkers} label={t.totalWorkers} tone="blue" />
@@ -2429,7 +2774,8 @@ function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettin
   const siteSetting = getSiteSetting(siteSettings, worker?.siteId || siteId);
   const history = getDemoWorkerHistory(worker, { includeToday: true, referenceDate: clock, siteSettings });
   const fullName = getWorkerFullName(worker);
-  const monthlyTotal = getMonthlyHoursForWorker(worker, getDefaultReportMonthId(clock), clock, siteSettings);
+  const hourlyRate = getWorkerHourlyRate(worker);
+  const paymentSummary = getWorkerPaymentSummary(history, siteSetting, hourlyRate);
   return (
     <section className="admin-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
@@ -2439,7 +2785,9 @@ function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettin
         <div><h3>{fullName}</h3><p>{t.passport}: <NumericToken className="passport-token">{worker?.passport}</NumericToken> · {t.country}: {getCountryLabel(worker?.country, language)}</p></div>
       </div>
       <section className="worker-history-summary">
-        <Metric value={monthlyTotal} label={t.monthlyHours} tone="purple" />
+        <Metric value={formatCurrencyAmount(hourlyRate, language)} label={t.hourlyRate} tone="blue" />
+        <Metric value={formatPaymentHours(paymentSummary.totalHours, language)} label={t.paymentTotalHours} tone="purple" />
+        <Metric value={formatCurrencyAmount(paymentSummary.totalPayment, language)} label={t.totalPayment} tone="green" />
       </section>
       <AdminTableFrame>
         <table className="admin-table">
@@ -2493,6 +2841,7 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
               <div className="report-selector-main">
                 <div className="report-selector-copy">
                   <h3>{site.name}</h3>
+                  <p>{site.address || rangeLabel}</p>
                   <p>{rangeLabel}</p>
                   <small className="report-card-mode">{reportMode === "daily" ? t.dailyReport : t.monthlyReport}</small>
                 </div>
@@ -2510,11 +2859,14 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
                     <Metric value={metrics.missing} label={t.missingToday} tone="red" />
                     <Metric value={metrics.totalWorkers} label={t.totalWorkers} tone="blue" />
                     <Metric value={metrics.totalHours} label={t.todayHours} tone="purple" />
+                    <Metric value={formatPaymentHours(reportTotals.monthlyHoursDecimal, language)} label={t.siteMonthlyHoursValue} tone="purple" />
+                    <Metric value={formatCurrencyAmount(reportTotals.minimumWageValue, language)} label={t.minimumWageHoursValue} tone="green" />
                   </>
                 ) : (
                   <>
                     <Metric value={reportTotals.totalWorkers} label={t.totalWorkers} tone="blue" />
-                    <Metric value={reportTotals.monthlyHours} label={t.monthlyHours} tone="purple" />
+                    <Metric value={formatPaymentHours(reportTotals.monthlyHoursDecimal, language)} label={t.siteMonthlyHoursValue} tone="purple" />
+                    <Metric value={formatCurrencyAmount(reportTotals.minimumWageValue, language)} label={t.minimumWageHoursValue} tone="green" />
                     <Metric value={reportTotals.missingDays} label={t.missingDays} tone="red" />
                     <Metric value={reportTotals.daysWorked} label={t.daysWorked} tone="green" />
                   </>
@@ -2546,7 +2898,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
   return (
     <section className="admin-page site-report-page">
       <button className="admin-back-button" type="button" onClick={onBack}>{t.back}</button>
-      <PageTitle title={t.reports} subtitle={`${site.name} · ${getReportRangeLabel(selectedMonth, clock)}`} />
+      <PageTitle title={t.reports} subtitle={`${site.name} · ${site.address || site.location} · ${getReportRangeLabel(selectedMonth, clock)}`} />
       <section className="report-detail-controls">
         <div className="report-tabs" role="tablist" aria-label={t.reports}>
           <button className={reportMode === "daily" ? "active" : ""} type="button" onClick={() => setReportMode("daily")}>{t.dailyReport}</button>
@@ -2571,7 +2923,9 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
         <Metric value={reportTotals.daysWorked} label={t.daysWorked} tone="green" />
         <Metric value={reportTotals.missingDays} label={t.missingDays} tone="red" />
         <Metric value={`${reportTotals.attendance}%`} label={t.attendancePercent} tone="blue" />
-        <Metric value={reportTotals.monthlyHours} label={t.siteMonthlyTotal} tone="purple" />
+        <Metric value={formatPaymentHours(reportTotals.monthlyHoursDecimal, language)} label={t.siteMonthlyHoursValue} tone="purple" />
+        <Metric value={formatCurrencyAmount(reportTotals.minimumWageValue, language)} label={t.minimumWageHoursValue} tone="green" />
+        <Metric value={`${formatCurrencyAmount(reportTotals.minimumHourlyRate, language)} ${t.perHour}`} label={t.minimumWageRateUsed} tone="blue" />
       </section>
       {reportMode === "daily" ? (
         <AdminTableFrame>
@@ -2624,7 +2978,7 @@ function AdminProjectsView({ t, language, workers, siteSettings, onOpenSite }) {
                 <img src={site.image} alt="" />
                 <span className="project-image-badge">{site.status}</span>
               </div>
-              <div className="project-info"><h3>{site.name}</h3><p>{t.location}: {site.location}</p><p>{t.contractorManager}: {site.client}</p><p>{t.stage}: {site.stage}</p></div>
+              <div className="project-info"><h3>{site.name}</h3><p>{t.location}: {site.location}</p><p>{t.siteAddress}: {site.address}</p><p>{t.contractorManager}: {site.client}</p><p>{t.stage}: {site.stage}</p></div>
               <div className="project-progress"><span>{t.progress}</span><strong>{site.progress}%</strong><div><i style={{ width: `${site.progress}%` }} /></div><small>{site.status}</small></div>
               <div className="project-stats"><Metric value={metrics.totalWorkers} label={t.assigned} tone="blue" /><Metric value={metrics.missing} label={t.missingToday} tone="red" /><Metric value={`${metrics.attendance}%`} label={t.attendancePercent} tone="green" /><Metric value={metrics.totalHours} label={t.totalWorkHours} tone="purple" /><button type="button" onClick={() => onOpenSite(site.id)}>{t.openSite}</button></div>
             </article>
