@@ -5808,6 +5808,10 @@ select:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .admin-system-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .control-kpi-grid .metric:last-child {
     grid-column: 1 / -1;
   }
@@ -5838,6 +5842,10 @@ select:focus-visible {
     grid-template-columns: 1fr;
     min-height: auto;
     padding: 18px;
+  }
+
+  .admin-system-health-grid {
+    grid-template-columns: 1fr;
   }
 
   .control-hero-main h2 {
@@ -7821,6 +7829,81 @@ select:focus-visible {
   font-weight: 850 !important;
   line-height: 1.35;
   text-shadow: none !important;
+}
+
+.admin-system-health-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(113, 132, 164, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 26px rgba(6, 25, 71, 0.08);
+}
+
+.admin-system-health-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-system-health-heading small {
+  color: #53647f;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.system-health-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #d73535;
+  box-shadow: 0 0 0 4px rgba(215, 53, 53, 0.12);
+}
+
+.system-health-dot.ok {
+  background: #19a85a;
+  box-shadow: 0 0 0 4px rgba(25, 168, 90, 0.12);
+}
+
+.admin-system-health-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.system-health-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e1e9f5;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.system-health-item span {
+  color: #64738d;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.system-health-item strong {
+  color: #061947;
+  font-size: 13px;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.system-health-item.ok strong {
+  color: #0b8c4b;
+}
+
+.system-health-item.warning strong,
+.system-health-item.error strong {
+  color: #c93838;
 }
 
 .gps-worker-message {

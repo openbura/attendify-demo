@@ -96,3 +96,16 @@ Latest local checks before this handoff:
 3. Create or verify a public HTTPS Vercel preview link.
 4. Test mobile GPS from the HTTPS link.
 5. Start Supabase integration only after the public preview is stable.
+
+## Update - 2026-05-30
+
+- Connex is now connected to Supabase for shared live-demo attendance.
+- Supabase is the main attendance source when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are configured.
+- `localStorage` remains only for UI preferences and local fallback when Supabase is missing.
+- Production URL: `https://connex-worker-attendance.vercel.app`.
+- Daily health command: `npm run health:connex`.
+- Healthy output starts with `CONNEX_HEALTH_OK`.
+- Failure output starts with `CONNEX_HEALTH_FAIL` and includes failed check, likely cause, and next action.
+- The health check validates production HTTP 200, app shell, Supabase reads, 21 workers, 4 sites, `active_punches`, `attendance_records`, and a browser/admin fallback-mode smoke check when practical.
+- Admin dashboard includes a compact admin-only system health panel showing data source, Supabase status, loaded workers/sites, active attendance, last server read, and last server write.
+- Free-plan note: expected usage for 21 workers is low, but Vercel/Supabase free tiers may have limits or inactivity pauses. For a real pilot/production rollout, review Supabase Auth, RLS, backup policy, monitoring, and paid-plan limits.

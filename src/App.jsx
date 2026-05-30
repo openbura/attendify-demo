@@ -254,6 +254,19 @@ const translations = {
     supabaseMonthlyReportDataNotice: "Monthly totals use shared Supabase attendance records for the selected month.",
     supabaseLocalModeWarning: "Supabase is not configured. Attendance is local-only and will not sync across devices.",
     supabaseSyncError: "Supabase is unavailable right now. Attendance sync may be delayed.",
+    systemHealthTitle: "System status",
+    systemHealthDataSource: "Data source",
+    systemHealthSupabase: "Supabase",
+    systemHealthLocalFallback: "Local fallback",
+    systemHealthConnection: "Supabase connection",
+    systemHealthOk: "OK",
+    systemHealthError: "Error",
+    systemHealthWorkersLoaded: "Workers loaded",
+    systemHealthSitesLoaded: "Sites loaded",
+    systemHealthActivePunches: "Active attendance",
+    systemHealthLastServerRead: "Last server read",
+    systemHealthLastServerWrite: "Last server write",
+    systemHealthNoData: "No data yet",
     checkoutSavedWithGpsEvidence: "Check-out saved with GPS evidence.",
     checkoutGpsNotVerified: "Check-out saved. GPS evidence was not available.",
     attendanceSaveFailed: "Attendance could not be saved. Please try again.",
@@ -692,6 +705,19 @@ Object.assign(translations.he, {
 Object.assign(translations.he, {
   supabaseLocalModeWarning: "\u0053\u0075\u0070\u0061\u0062\u0061\u0073\u0065 \u05dc\u05d0 \u05de\u05d5\u05d2\u05d3\u05e8. \u05d4\u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05e0\u05e9\u05de\u05e8\u05ea \u05de\u05e7\u05d5\u05de\u05d9\u05ea \u05d1\u05dc\u05d1\u05d3 \u05d5\u05dc\u05d0 \u05de\u05e1\u05ea\u05e0\u05db\u05e8\u05e0\u05ea \u05d1\u05d9\u05df \u05de\u05db\u05e9\u05d9\u05e8\u05d9\u05dd.",
   supabaseSyncError: "\u0053\u0075\u0070\u0061\u0062\u0061\u0073\u0065 \u05dc\u05d0 \u05d6\u05de\u05d9\u05df \u05db\u05e8\u05d2\u05e2. \u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05d4\u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05e2\u05dc\u05d5\u05dc \u05dc\u05d4\u05ea\u05e2\u05db\u05d1.",
+  systemHealthTitle: "\u05de\u05e6\u05d1 \u05de\u05e2\u05e8\u05db\u05ea",
+  systemHealthDataSource: "\u05de\u05e7\u05d5\u05e8 \u05e0\u05ea\u05d5\u05e0\u05d9\u05dd",
+  systemHealthSupabase: "\u0053\u0075\u0070\u0061\u0062\u0061\u0073\u0065",
+  systemHealthLocalFallback: "\u05e9\u05de\u05d9\u05e8\u05d4 \u05de\u05e7\u05d5\u05de\u05d9\u05ea",
+  systemHealthConnection: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u0053\u0075\u0070\u0061\u0062\u0061\u0073\u0065",
+  systemHealthOk: "\u05ea\u05e7\u05d9\u05df",
+  systemHealthError: "\u05e9\u05d2\u05d9\u05d0\u05d4",
+  systemHealthWorkersLoaded: "\u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05e9\u05e0\u05d8\u05e2\u05e0\u05d5",
+  systemHealthSitesLoaded: "\u05d0\u05ea\u05e8\u05d9\u05dd \u05e9\u05e0\u05d8\u05e2\u05e0\u05d5",
+  systemHealthActivePunches: "\u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05e4\u05e2\u05d9\u05dc\u05d4",
+  systemHealthLastServerRead: "\u05e7\u05e8\u05d9\u05d0\u05d4 \u05d0\u05d7\u05e8\u05d5\u05e0\u05d4 \u05de\u05d4\u05e9\u05e8\u05ea",
+  systemHealthLastServerWrite: "\u05db\u05ea\u05d9\u05d1\u05d4 \u05d0\u05d7\u05e8\u05d5\u05e0\u05d4 \u05dc\u05e9\u05e8\u05ea",
+  systemHealthNoData: "\u05e2\u05d3\u05d9\u05d9\u05df \u05d0\u05d9\u05df",
 });
 
 function timeToMinutes(time) {
@@ -1554,6 +1580,9 @@ function App() {
   const [gpsFallback, setGpsFallback] = useState(null);
   const [checkingSiteId, setCheckingSiteId] = useState(null);
   const [supabaseLoadError, setSupabaseLoadError] = useState("");
+  const [lastSupabaseReadAt, setLastSupabaseReadAt] = useState(null);
+  const [lastSupabaseWriteAt, setLastSupabaseWriteAt] = useState(null);
+  const [supabaseActivePunchCount, setSupabaseActivePunchCount] = useState(0);
 
   const language = screen === "admin" ? adminLanguage : workerLanguage;
   const t = useMemo(() => translations[language], [language]);
@@ -1582,6 +1611,15 @@ function App() {
     () => getWorkerRecords(currentMonthWorkerRecords, loggedInWorkerId),
     [currentMonthWorkerRecords, loggedInWorkerId],
   );
+  const systemHealth = useMemo(() => ({
+    dataSource: isSupabaseConfigured ? "supabase" : "local",
+    supabaseConnected: isSupabaseConfigured && !supabaseLoadError,
+    workersLoaded: adminWorkers.length,
+    sitesLoaded: Object.keys(siteSettings || {}).length,
+    activePunches: isSupabaseConfigured ? supabaseActivePunchCount : activePunch ? 1 : 0,
+    lastReadAt: lastSupabaseReadAt,
+    lastWriteAt: lastSupabaseWriteAt,
+  }), [activePunch, adminWorkers.length, lastSupabaseReadAt, lastSupabaseWriteAt, siteSettings, supabaseActivePunchCount, supabaseLoadError]);
 
   useEffect(() => {
     localStorage.setItem(WORKER_LANGUAGE_STORAGE_KEY, workerLanguage);
@@ -1641,6 +1679,8 @@ function App() {
         const nextRecords = liveData.records.map((record) => normalizeWorkerRecord(record, nextSiteSettings));
 
         setSupabaseLoadError("");
+        setLastSupabaseReadAt(new Date());
+        setSupabaseActivePunchCount(liveData.activePunches.length);
         setSiteSettings(nextSiteSettings);
         setRecords(nextRecords);
         setAdminWorkers(mergeWorkersWithSharedAttendance(liveData.workers, nextRecords, liveData.activePunches, new Date()));
@@ -1669,6 +1709,7 @@ function App() {
 
   const handleWorkerLanguageChange = (event) => setWorkerLanguage(event.target.value);
   const handleAdminLanguageChange = (event) => setAdminLanguage(event.target.value);
+  const markSupabaseWriteSuccess = () => setLastSupabaseWriteAt(new Date());
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -1770,6 +1811,7 @@ function App() {
         await saveSupabaseActivePunch(punch);
         await saveSupabaseAttendanceRecord(checkInRecord);
         await updateSupabaseWorker(loggedInWorkerId, { siteId });
+        markSupabaseWriteSuccess();
       } catch (error) {
         console.error("Connex Supabase check-in save failed", error);
         setGpsStatus({ type: "error", message: t.attendanceSaveFailed || translations.en.attendanceSaveFailed, canRetry: true });
@@ -1910,6 +1952,7 @@ function App() {
         checkOutRecord = await saveSupabaseAttendanceRecord(checkOutRecord) || checkOutRecord;
         await clearSupabaseActivePunch(loggedInWorkerId);
         await updateSupabaseWorker(loggedInWorkerId, { siteId: checkOutSiteId });
+        markSupabaseWriteSuccess();
       } catch (error) {
         console.error("Connex Supabase check-out save failed", error);
         setGpsStatus({ type: "error", message: t.attendanceSaveFailed || translations.en.attendanceSaveFailed, canRetry: true });
@@ -1979,6 +2022,7 @@ function App() {
         try {
           await saveSupabaseAttendanceRecord(workerRecord);
           await updateSupabaseWorker(workerId, { siteId: workerToPersist.siteId, status: workerToPersist.status || "" });
+          markSupabaseWriteSuccess();
         } catch (error) {
           console.error("Connex Supabase admin worker update failed", error);
         }
@@ -1990,6 +2034,7 @@ function App() {
     const normalizedSettings = normalizeSiteSetting(siteId, nextSettings);
     if (isSupabaseConfigured) {
       await saveSupabaseSiteSetting(siteId, normalizedSettings);
+      markSupabaseWriteSuccess();
     }
     setSiteSettings((currentSettings) => ({
       ...currentSettings,
@@ -2057,6 +2102,7 @@ function App() {
             siteSettings={siteSettings}
             useGeneratedDemoRecords={useGeneratedDemoRecords}
             dataSyncWarning={dataSyncWarning}
+            systemHealth={systemHealth}
             onOpenMissingWorkers={() => setAdminView("missingWorkers")}
             onOpenSite={(siteId) => {
               setActiveSiteId(siteId);
@@ -2475,7 +2521,44 @@ function ReportActionIcon() {
   );
 }
 
-function AdminDashboardView({ t, workers, records, clock, language, siteSettings, useGeneratedDemoRecords, dataSyncWarning, onOpenMissingWorkers, onOpenSite }) {
+function formatHealthDateTime(value, language) {
+  if (!value) return "";
+  return `${value.toLocaleDateString(language === "he" ? "he-IL" : "en-US")} ${formatCurrentTime(value)}`;
+}
+
+function AdminSystemHealthPanel({ t, language, health }) {
+  if (!health) return null;
+  const isSupabase = health.dataSource === "supabase";
+  const connectionOk = isSupabase && health.supabaseConnected;
+  const items = [
+    { label: t.systemHealthDataSource, value: isSupabase ? t.systemHealthSupabase : t.systemHealthLocalFallback, status: isSupabase ? "ok" : "warning" },
+    { label: t.systemHealthConnection, value: connectionOk ? t.systemHealthOk : t.systemHealthError, status: connectionOk ? "ok" : "error" },
+    { label: t.systemHealthWorkersLoaded, value: health.workersLoaded },
+    { label: t.systemHealthSitesLoaded, value: health.sitesLoaded },
+    { label: t.systemHealthActivePunches, value: health.activePunches },
+    { label: t.systemHealthLastServerRead, value: formatHealthDateTime(health.lastReadAt, language) || t.systemHealthNoData },
+    { label: t.systemHealthLastServerWrite, value: formatHealthDateTime(health.lastWriteAt, language) || t.systemHealthNoData },
+  ];
+
+  return (
+    <section className="admin-system-health-panel" aria-label={t.systemHealthTitle}>
+      <div className="admin-system-health-heading">
+        <small>{t.systemHealthTitle}</small>
+        <span className={connectionOk ? "system-health-dot ok" : "system-health-dot error"} />
+      </div>
+      <div className="admin-system-health-grid">
+        {items.map((item) => (
+          <div className={["system-health-item", item.status || ""].filter(Boolean).join(" ")} key={item.label}>
+            <span>{item.label}</span>
+            <strong><NumericToken>{item.value}</NumericToken></strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AdminDashboardView({ t, workers, records, clock, language, siteSettings, useGeneratedDemoRecords, dataSyncWarning, systemHealth, onOpenMissingWorkers, onOpenSite }) {
   const todayDate = getTodayDate(clock);
   const monthId = getMonthId(clock);
   const monthLabel = getMonthLabel(monthId, language);
@@ -2492,6 +2575,7 @@ function AdminDashboardView({ t, workers, records, clock, language, siteSettings
     <section className="admin-page admin-dashboard-page">
       <PageTitle title={t.adminTitle} subtitle={t.adminSubtitle} />
       {dataSyncWarning ? <p className="report-data-notice" role="status">{dataSyncWarning}</p> : null}
+      <AdminSystemHealthPanel t={t} language={language} health={systemHealth} />
       <section className="control-center-hero">
         <div className="control-hero-main">
           <div className="control-hero-meta">

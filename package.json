@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "health:connex": "node scripts/check-connex-health.mjs",
     "preview": "vite preview",
     "remotion:studio": "remotion studio src/remotion/index.jsx",
     "remotion:render": "remotion render src/remotion/index.jsx ConnexPromo output.mp4 --codec=h264",
