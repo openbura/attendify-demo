@@ -5,6 +5,7 @@ dist
 .env
 .env.*
 .env.local
+!.env.example
 npm-debug.log*
 /.edge-test-profile*
 /dashboard-*.png
@@ -15,5 +16,6 @@ npm-debug.log*
 /cloudflared.*.log
 /.tunnel-tools/
 /assets/live demo june 26/
+/supabase/generated/
 
 .vercel

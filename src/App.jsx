@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MINIMUM_HOURLY_RATE_ILS, siteDefinitions, statusReasons, workbookWorkers, workerCredentials } from "./data/adminDemoData.js";
 import {
+  clearSupabaseActivePunch,
+  findSupabaseWorkerLogin,
+  getSupabaseActivePunch,
+  isSupabaseConfigured,
+  loadSupabaseLiveData,
+  saveSupabaseActivePunch,
+  saveSupabaseAttendanceRecord,
+  saveSupabaseSiteSetting,
+  updateSupabaseWorker,
+} from "./services/connexSupabase.js";
+import {
   DEFAULT_SITE_GPS_SETTINGS,
   GEOLOCATION_ERROR_CODES,
   calculateDistanceMeters,
@@ -40,6 +51,7 @@ const DEFAULT_ROUNDING_RULE = "site-day-cap";
 const DEFAULT_ROUNDING_TOLERANCE_MINUTES = 15;
 const ROUNDING_TOLERANCE_OPTIONS = [0, 10, 15, 20, 30];
 const MIN_GPS_CHECKING_MS = 1200;
+const SUPABASE_REFRESH_INTERVAL_MS = 5000;
 
 const fieldInitialState = { workerId: "", password: "" };
 
@@ -238,8 +250,13 @@ const translations = {
     googleMapsFallback: "Enter coordinates manually or use current location.",
     dailyReportDataNotice: "Daily cards use today's local attendance. Demo data is not payroll truth.",
     monthlyReportDataNotice: "Monthly totals are generated from local/demo rows. Verify before payroll.",
+    supabaseDailyReportDataNotice: "Daily cards use shared Supabase attendance. Demo data is not payroll truth.",
+    supabaseMonthlyReportDataNotice: "Monthly totals use shared Supabase attendance records for the selected month.",
+    supabaseLocalModeWarning: "Supabase is not configured. Attendance is local-only and will not sync across devices.",
+    supabaseSyncError: "Supabase is unavailable right now. Attendance sync may be delayed.",
     checkoutSavedWithGpsEvidence: "Check-out saved with GPS evidence.",
     checkoutGpsNotVerified: "Check-out saved. GPS evidence was not available.",
+    attendanceSaveFailed: "Attendance could not be saved. Please try again.",
   },
   he: {},
   th: {},
@@ -581,6 +598,11 @@ Object.assign(translations.he, {
   checkoutGpsNotVerified: "היציאה נשמרה. עדות GPS לא הייתה זמינה.",
 });
 
+Object.assign(translations.he, {
+  supabaseDailyReportDataNotice: "\u05db\u05e8\u05d8\u05d9\u05e1\u05d9 \u05d4\u05d9\u05d5\u05dd \u05de\u05e9\u05ea\u05de\u05e9\u05d9\u05dd \u05d1\u05e0\u05ea\u05d5\u05e0\u05d9 \u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05de\u05e9\u05d5\u05ea\u05e4\u05d9\u05dd \u05de-Supabase. \u05d6\u05d4 \u05e2\u05d3\u05d9\u05d9\u05df \u05d3\u05de\u05d5 \u05d5\u05dc\u05d0 \u05e9\u05db\u05e8 \u05d0\u05de\u05d9\u05ea\u05d9.",
+  supabaseMonthlyReportDataNotice: "\u05e1\u05d9\u05db\u05d5\u05de\u05d9 \u05d4\u05d7\u05d5\u05d3\u05e9 \u05de\u05d7\u05d5\u05e9\u05d1\u05d9\u05dd \u05de\u05e8\u05e9\u05d5\u05de\u05d5\u05ea \u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05de\u05e9\u05d5\u05ea\u05e4\u05d5\u05ea \u05d1-Supabase \u05dc\u05d7\u05d5\u05d3\u05e9 \u05e9\u05e0\u05d1\u05d7\u05e8.",
+});
+
 Object.assign(translations.en, {
   demoCredentials: "Workers use assigned credentials · Admin 111 / 111",
   invalidCredentialsError: "Invalid username or password. Workers must use their assigned live-demo credentials.",
@@ -634,6 +656,8 @@ for (const code of ["th", "hi", "ro", "si", "zh"]) {
     locationTimeout: translations.en.locationTimeout,
     locationInsecureContext: translations.en.locationInsecureContext,
     gpsDevModeNotice: translations.en.gpsDevModeNotice,
+    supabaseLocalModeWarning: translations.en.supabaseLocalModeWarning,
+    supabaseSyncError: translations.en.supabaseSyncError,
   });
 }
 
@@ -663,6 +687,11 @@ Object.assign(translations.he, {
   locationTimeout: "בדיקת המיקום נמשכה יותר מדי זמן. כדאי לעבור לאזור פתוח ולנסות שוב.",
   locationInsecureContext: "GPS אמיתי במובייל חסום בכתובת HTTP לא מאובטחת. לבדיקת GPS אמיתי צריך HTTPS, או לפתוח קישור בדיקת GPS מקומי.",
   gpsDevModeNotice: "מצב בדיקת GPS מקומי פעיל - לא לשימוש בדמו רגיל.",
+});
+
+Object.assign(translations.he, {
+  supabaseLocalModeWarning: "\u0053\u0075\u0070\u0061\u0062\u0061\u0073\u0065 \u05dc\u05d0 \u05de\u05d5\u05d2\u05d3\u05e8. \u05d4\u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05e0\u05e9\u05de\u05e8\u05ea \u05de\u05e7\u05d5\u05de\u05d9\u05ea \u05d1\u05dc\u05d1\u05d3 \u05d5\u05dc\u05d0 \u05de\u05e1\u05ea\u05e0\u05db\u05e8\u05e0\u05ea \u05d1\u05d9\u05df \u05de\u05db\u05e9\u05d9\u05e8\u05d9\u05dd.",
+  supabaseSyncError: "\u0053\u0075\u0070\u0061\u0062\u0061\u0073\u0065 \u05dc\u05d0 \u05d6\u05de\u05d9\u05df \u05db\u05e8\u05d2\u05e2. \u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05d4\u05e0\u05d5\u05db\u05d7\u05d5\u05ea \u05e2\u05dc\u05d5\u05dc \u05dc\u05d4\u05ea\u05e2\u05db\u05d1.",
 });
 
 function timeToMinutes(time) {
@@ -976,10 +1005,11 @@ function getDailyReportDates(monthId, referenceDate = new Date()) {
   return dates.length ? [dates[0]] : [];
 }
 
-function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
+function normalizeAdminWorker(worker, index = 0, referenceDate = new Date(), options = {}) {
   const hasStatus = Boolean(worker.status);
   const todayDate = getTodayDate(referenceDate);
   const hourlyRate = normalizeHourlyRate(worker.hourlyRate);
+  const generateMissingTimes = options.generateMissingTimes ?? true;
 
   if (hasStatus) {
     return {
@@ -1006,6 +1036,19 @@ function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
     };
   }
 
+  if (!generateMissingTimes && !worker.entry && !worker.exit) {
+    return {
+      ...worker,
+      hourlyRate,
+      date: worker.date || todayDate,
+      actualEntryTime: "",
+      actualExitTime: "",
+      entry: "",
+      exit: "",
+      status: worker.status || "",
+    };
+  }
+
   const hasCompleteTimes = Boolean(worker.entry && worker.exit);
   const generatedTimes = hasCompleteTimes ? { entry: worker.entry, exit: worker.exit } : getDeterministicAttendance(worker.id, index);
 
@@ -1021,8 +1064,8 @@ function normalizeAdminWorker(worker, index = 0, referenceDate = new Date()) {
   };
 }
 
-function getNormalizedAdminWorkers(workers, referenceDate = new Date()) {
-  return workers.map((worker, index) => normalizeAdminWorker(worker, index, referenceDate));
+function getNormalizedAdminWorkers(workers, referenceDate = new Date(), options = {}) {
+  return workers.map((worker, index) => normalizeAdminWorker(worker, index, referenceDate, options));
 }
 
 function formatCurrentTime(date = new Date()) {
@@ -1068,6 +1111,15 @@ function formatCurrencyAmount(value, language = "he") {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function getReportDataNotice(t, reportMode, useGeneratedDemoRecords) {
+  if (useGeneratedDemoRecords) {
+    return reportMode === "daily" ? t.dailyReportDataNotice : t.monthlyReportDataNotice;
+  }
+  return reportMode === "daily"
+    ? t.supabaseDailyReportDataNotice || translations.en.supabaseDailyReportDataNotice
+    : t.supabaseMonthlyReportDataNotice || translations.en.supabaseMonthlyReportDataNotice;
+}
+
 function getInitialWorkerLanguage() {
   const savedLanguage = localStorage.getItem(WORKER_LANGUAGE_STORAGE_KEY);
   return workerLanguages.some((item) => item.code === savedLanguage) ? savedLanguage : "en";
@@ -1097,6 +1149,62 @@ function getStoredAdminWorkers() {
   } catch {
     return getNormalizedAdminWorkers(workbookWorkers);
   }
+}
+
+function getRecordForWorkerDate(records = [], workerId, date) {
+  return records.find((record) => Number(record.workerId) === Number(workerId) && isSameDate(record.date, date)) || null;
+}
+
+function getActivePunchForWorker(activePunches = [], workerId) {
+  return activePunches.find((punch) => Number(punch.workerId) === Number(workerId)) || null;
+}
+
+function mergeWorkersWithSharedAttendance(workers = [], records = [], activePunches = [], referenceDate = new Date()) {
+  const today = getTodayDate(referenceDate);
+  const mergedWorkers = workers.map((worker) => {
+    const activePunch = getActivePunchForWorker(activePunches, worker.id);
+    if (activePunch) {
+      return {
+        ...worker,
+        siteId: activePunch.siteId || worker.siteId,
+        date: activePunch.entryDate || today,
+        actualEntryTime: activePunch.entryTime,
+        actualExitTime: "",
+        entry: activePunch.entryTime,
+        exit: "",
+        status: "",
+        source: "live",
+      };
+    }
+
+    const todayRecord = getRecordForWorkerDate(records, worker.id, today);
+    if (todayRecord) {
+      return {
+        ...worker,
+        siteId: todayRecord.siteId || worker.siteId,
+        date: todayRecord.date || today,
+        actualEntryTime: todayRecord.actualEntryTime || todayRecord.entry || "",
+        actualExitTime: todayRecord.actualExitTime || todayRecord.exit || "",
+        entry: todayRecord.entry || todayRecord.actualEntryTime || "",
+        exit: todayRecord.exit || todayRecord.actualExitTime || "",
+        status: todayRecord.status || "",
+        source: todayRecord.source || "live",
+      };
+    }
+
+    return {
+      ...worker,
+      date: today,
+      actualEntryTime: "",
+      actualExitTime: "",
+      entry: "",
+      exit: "",
+      status: worker.status || "",
+      source: worker.source || "supabase-worker",
+    };
+  });
+
+  return getNormalizedAdminWorkers(mergedWorkers, referenceDate, { generateMissingTimes: false });
 }
 
 function formatDistanceMeters(distanceMeters) {
@@ -1253,23 +1361,46 @@ function getStatusLabel(status, language, t) {
   return statusLabels[status]?.[language === "he" ? "he" : "en"] || status;
 }
 
-function getWorkerMonthlySummary(worker, t, language, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+function getWorkerMonthlySummary(worker, t, language, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], options = {}) {
   const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
-  const records = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings);
-  const workedRecords = records.filter((record) => getRecordMinutes(record, siteSetting));
-  const missingRecords = records.filter((record) => !getRecordMinutes(record, siteSetting));
+  const reportRows = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings, records, options);
+  const workedRecords = reportRows.filter((record) => getRecordMinutes(record, siteSetting));
+  const missingRecords = reportRows.filter((record) => !getRecordMinutes(record, siteSetting));
 
   return {
     daysWorked: workedRecords.length,
     missingDays: missingRecords.length,
-    totalHours: formatMinutes(records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0)),
+    totalHours: formatMinutes(reportRows.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0)),
   };
 }
 
-function getReportRowsForWorker(worker, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+function getReportRowsForWorker(worker, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], options = {}) {
   const dates = getReportDates(monthId, referenceDate);
   const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
-  return dates.map((date, index) => applyAttendanceRules(getDemoRecordForDate(worker, date, index), siteSetting));
+  const useGeneratedRecords = options.useGeneratedDemoRecords ?? true;
+  return dates.map((date, index) => {
+    const sharedRecord = getRecordForWorkerDate(records, worker?.id, date);
+    if (sharedRecord) {
+      const recordSiteSetting = getSiteSetting(siteSettings, sharedRecord.siteId || worker?.siteId);
+      return applyAttendanceRules({ ...sharedRecord, siteId: sharedRecord.siteId || worker?.siteId }, recordSiteSetting);
+    }
+
+    if (!useGeneratedRecords) {
+      return applyAttendanceRules({
+        date,
+        workerId: worker?.id,
+        siteId: worker?.siteId,
+        actualEntryTime: "",
+        actualExitTime: "",
+        entry: "",
+        exit: "",
+        status: "",
+        source: "empty",
+      }, siteSetting);
+    }
+
+    return applyAttendanceRules(getDemoRecordForDate(worker, date, index), siteSetting);
+  });
 }
 
 function getDemoRecordForDate(worker, date, index = 0) {
@@ -1304,25 +1435,25 @@ function getDemoRecordForDate(worker, date, index = 0) {
   };
 }
 
-function getGlobalMonthlyHours(workers, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+function getGlobalMonthlyHours(workers, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], options = {}) {
   const minutes = workers.reduce((sum, worker) => {
     const siteSetting = getSiteSetting(siteSettings, worker.siteId);
-    return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
+    return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings, records, options).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
   }, 0);
   return Math.round((minutes / 60) * 10) / 10;
 }
 
-function getSiteReportTotals(workers, siteId, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+function getSiteReportTotals(workers, siteId, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], options = {}) {
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId);
   const totals = siteWorkers.reduce((siteTotals, worker) => {
     const siteSetting = getSiteSetting(siteSettings, worker.siteId);
-    const records = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings);
-    const workedRecords = records.filter((record) => getRecordMinutes(record, siteSetting));
-    const missingRecords = records.filter((record) => !getRecordMinutes(record, siteSetting));
+    const reportRows = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings, records, options);
+    const workedRecords = reportRows.filter((record) => getRecordMinutes(record, siteSetting));
+    const missingRecords = reportRows.filter((record) => !getRecordMinutes(record, siteSetting));
     return {
       daysWorked: siteTotals.daysWorked + workedRecords.length,
       missingDays: siteTotals.missingDays + missingRecords.length,
-      minutes: siteTotals.minutes + records.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0),
+      minutes: siteTotals.minutes + reportRows.reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0),
     };
   }, { daysWorked: 0, missingDays: 0, minutes: 0 });
 
@@ -1422,11 +1553,18 @@ function App() {
   const [gpsStatus, setGpsStatus] = useState(null);
   const [gpsFallback, setGpsFallback] = useState(null);
   const [checkingSiteId, setCheckingSiteId] = useState(null);
+  const [supabaseLoadError, setSupabaseLoadError] = useState("");
 
   const language = screen === "admin" ? adminLanguage : workerLanguage;
   const t = useMemo(() => translations[language], [language]);
   const isRtl = language === "he";
   const isGpsDevMode = isDevGpsTestModeActive();
+  const useGeneratedDemoRecords = !isSupabaseConfigured;
+  const dataSyncWarning = !isSupabaseConfigured
+    ? t.supabaseLocalModeWarning
+    : supabaseLoadError
+      ? t.supabaseSyncError
+      : "";
   const isCheckedIn = Boolean(activePunch);
   const activeEntryDate = activePunch?.entryDate || "";
   const activeEntryTime = activePunch?.entryTime || "";
@@ -1454,18 +1592,22 @@ function App() {
   }, [adminLanguage]);
 
   useEffect(() => {
+    if (isSupabaseConfigured) return;
     localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(adminWorkers));
   }, [adminWorkers]);
 
   useEffect(() => {
+    if (isSupabaseConfigured) return;
     localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(siteSettings));
   }, [siteSettings]);
 
   useEffect(() => {
+    if (isSupabaseConfigured) return;
     localStorage.setItem(WORKER_RECORDS_STORAGE_KEY, JSON.stringify(getPersistableWorkerRecords(records)));
   }, [records]);
 
   useEffect(() => {
+    if (isSupabaseConfigured) return;
     if (activePunch) {
       localStorage.setItem(WORKER_ACTIVE_PUNCH_STORAGE_KEY, JSON.stringify(activePunch));
       return;
@@ -1484,6 +1626,43 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+    let isCancelled = false;
+
+    async function refreshSupabaseData() {
+      try {
+        const liveData = await loadSupabaseLiveData();
+        if (isCancelled || !liveData) return;
+
+        const nextSiteSettings = normalizeSiteSettingsMap({
+          ...getDefaultSiteSettingsMap(),
+          ...liveData.siteSettings,
+        });
+        const nextRecords = liveData.records.map((record) => normalizeWorkerRecord(record, nextSiteSettings));
+
+        setSupabaseLoadError("");
+        setSiteSettings(nextSiteSettings);
+        setRecords(nextRecords);
+        setAdminWorkers(mergeWorkersWithSharedAttendance(liveData.workers, nextRecords, liveData.activePunches, new Date()));
+        if (loggedInWorkerId) {
+          setActivePunch(getActivePunchForWorker(liveData.activePunches, loggedInWorkerId));
+        }
+      } catch (error) {
+        console.error("Connex Supabase refresh failed", error);
+        setSupabaseLoadError(error?.message || "Supabase unavailable");
+      }
+    }
+
+    refreshSupabaseData();
+    const interval = window.setInterval(refreshSupabaseData, SUPABASE_REFRESH_INTERVAL_MS);
+    return () => {
+      isCancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [loggedInWorkerId]);
+
+  useEffect(() => {
+    if (isSupabaseConfigured) return;
     setAdminWorkers((workers) => getNormalizedAdminWorkers(workers, clock));
     setSelectedReportMonth((monthId) => monthId || getDefaultReportMonthId(clock));
   }, [todayDate]);
@@ -1497,7 +1676,7 @@ function App() {
     if (showError) setShowError(false);
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const username = fields.workerId.trim();
     const password = fields.password.trim();
@@ -1508,11 +1687,28 @@ function App() {
       return;
     }
 
-    const workerLogin = getWorkerLogin(username, password);
+    let workerLogin = null;
+    try {
+      workerLogin = isSupabaseConfigured
+        ? await findSupabaseWorkerLogin(username, password)
+        : getWorkerLogin(username, password);
+    } catch (error) {
+      console.error("Connex worker login lookup failed", error);
+      workerLogin = null;
+    }
+
     if (workerLogin) {
       setShowError(false);
       setLoggedInWorkerId(workerLogin.workerId);
-      setActivePunch(getStoredActivePunch(workerLogin.workerId));
+      try {
+        const punch = isSupabaseConfigured
+          ? await getSupabaseActivePunch(workerLogin.workerId)
+          : getStoredActivePunch(workerLogin.workerId);
+        setActivePunch(punch);
+      } catch (error) {
+        console.error("Connex active punch lookup failed", error);
+        setActivePunch(null);
+      }
       setGpsStatus(null);
       setGpsFallback(null);
       setScreen("dashboard");
@@ -1540,36 +1736,50 @@ function App() {
     setAdminView("dashboard");
   };
 
-  const completeWorkerCheckIn = ({ siteId, siteSetting, evidence }) => {
+  const completeWorkerCheckIn = async ({ siteId, siteSetting, evidence }) => {
     const entryDate = new Date();
     const entryDateLabel = getTodayDate(entryDate);
     const entryTime = formatCurrentTime(entryDate);
     const site = siteDefinitions.find((item) => item.id === siteId);
-
-    setActivePunch({
+    const punch = {
       workerId: loggedInWorkerId,
       entryDate: entryDateLabel,
       entryTime,
       siteId,
       checkInGpsEvidence: evidence,
-    });
+    };
+    const checkInRecord = applyAttendanceRules({
+      id: Date.now(),
+      workerId: loggedInWorkerId,
+      date: entryDateLabel,
+      siteId,
+      actualEntryTime: entryTime,
+      actualExitTime: "",
+      entry: entryTime,
+      exit: "",
+      source: "live",
+      checkInGpsEvidence: evidence,
+      gpsEvidence: {
+        checkIn: evidence,
+        checkOut: null,
+      },
+    }, siteSetting);
+
+    if (isSupabaseConfigured) {
+      try {
+        await saveSupabaseActivePunch(punch);
+        await saveSupabaseAttendanceRecord(checkInRecord);
+        await updateSupabaseWorker(loggedInWorkerId, { siteId });
+      } catch (error) {
+        console.error("Connex Supabase check-in save failed", error);
+        setGpsStatus({ type: "error", message: t.attendanceSaveFailed || translations.en.attendanceSaveFailed, canRetry: true });
+        return;
+      }
+    }
+
+    setActivePunch(punch);
     setRecords((currentRecords) => [
-      applyAttendanceRules({
-        id: Date.now(),
-        workerId: loggedInWorkerId,
-        date: entryDateLabel,
-        siteId,
-        actualEntryTime: entryTime,
-        actualExitTime: "",
-        entry: entryTime,
-        exit: "",
-        source: "live",
-        checkInGpsEvidence: evidence,
-        gpsEvidence: {
-          checkIn: evidence,
-          checkOut: null,
-        },
-      }, siteSetting),
+      checkInRecord,
       ...currentRecords.filter((record) => !(Number(record.workerId) === Number(loggedInWorkerId) && isSameDate(record.date, entryDateLabel))),
     ]);
     setAdminWorkers((workers) =>
@@ -1632,7 +1842,7 @@ function App() {
         return;
       }
 
-      completeWorkerCheckIn({ siteId, siteSetting, evidence });
+      await completeWorkerCheckIn({ siteId, siteSetting, evidence });
     } catch (error) {
       await keepGpsCheckingStateVisible(gpsStartedAt);
       setGpsFallback(null);
@@ -1677,24 +1887,38 @@ function App() {
     const checkInGpsEvidence = activePunch?.checkInGpsEvidence || null;
     const attendanceDate = activeEntryDate || recordDate;
     const entryTime = activeEntryTime || formatCurrentTime(exitDate);
+    let checkOutRecord = applyAttendanceRules({
+      id: Date.now(),
+      workerId: loggedInWorkerId,
+      date: attendanceDate,
+      siteId: checkOutSiteId,
+      actualEntryTime: entryTime,
+      actualExitTime: exitTime,
+      entry: entryTime,
+      exit: exitTime,
+      source: "live",
+      checkInGpsEvidence,
+      checkOutGpsEvidence,
+      gpsEvidence: {
+        checkIn: checkInGpsEvidence,
+        checkOut: checkOutGpsEvidence,
+      },
+    }, checkOutSiteSetting);
+
+    if (isSupabaseConfigured) {
+      try {
+        checkOutRecord = await saveSupabaseAttendanceRecord(checkOutRecord) || checkOutRecord;
+        await clearSupabaseActivePunch(loggedInWorkerId);
+        await updateSupabaseWorker(loggedInWorkerId, { siteId: checkOutSiteId });
+      } catch (error) {
+        console.error("Connex Supabase check-out save failed", error);
+        setGpsStatus({ type: "error", message: t.attendanceSaveFailed || translations.en.attendanceSaveFailed, canRetry: true });
+        return;
+      }
+    }
+
     setRecords((currentRecords) => [
-      applyAttendanceRules({
-        id: Date.now(),
-        workerId: loggedInWorkerId,
-        date: attendanceDate,
-        siteId: checkOutSiteId,
-        actualEntryTime: entryTime,
-        actualExitTime: exitTime,
-        entry: entryTime,
-        exit: exitTime,
-        source: "live",
-        checkInGpsEvidence,
-        checkOutGpsEvidence,
-        gpsEvidence: {
-          checkIn: checkInGpsEvidence,
-          checkOut: checkOutGpsEvidence,
-        },
-      }, checkOutSiteSetting),
+      checkOutRecord,
       ...currentRecords.filter((record) => !(Number(record.workerId) === Number(loggedInWorkerId) && isSameDate(record.date, attendanceDate))),
     ]);
     setAdminWorkers((workers) =>
@@ -1723,17 +1947,54 @@ function App() {
   };
 
   const updateAdminWorker = (workerId, field, value) => {
+    let workerToPersist = null;
     setAdminWorkers((workers) =>
       workers.map((worker) => {
         if (worker.id !== workerId) return worker;
         const updated = { ...worker, [field]: value, date: todayDate };
-        if (field === "entry") return { ...updated, actualEntryTime: value, calculatedEntryTime: "", totalCalculatedHours: "", status: "" };
-        if (field === "exit") return { ...updated, actualExitTime: value, calculatedExitTime: "", totalCalculatedHours: "", status: "" };
-        if (field === "status" && value) return { ...updated, entry: "", exit: "" };
-        if (field === "status" && !value) return normalizeAdminWorker({ ...updated, status: "" });
-        return updated;
+        if (field === "entry") workerToPersist = { ...updated, actualEntryTime: value, calculatedEntryTime: "", totalCalculatedHours: "", status: "" };
+        else if (field === "exit") workerToPersist = { ...updated, actualExitTime: value, calculatedExitTime: "", totalCalculatedHours: "", status: "" };
+        else if (field === "status" && value) workerToPersist = { ...updated, entry: "", exit: "" };
+        else if (field === "status" && !value) workerToPersist = normalizeAdminWorker({ ...updated, status: "" }, 0, clock, { generateMissingTimes: !isSupabaseConfigured });
+        else workerToPersist = updated;
+        return workerToPersist;
       }),
     );
+
+    if (isSupabaseConfigured) {
+      window.setTimeout(async () => {
+        if (!workerToPersist) return;
+        const workerRecord = applyAttendanceRules({
+          id: Date.now(),
+          workerId,
+          date: todayDate,
+          siteId: workerToPersist.siteId,
+          actualEntryTime: workerToPersist.actualEntryTime || workerToPersist.entry,
+          actualExitTime: workerToPersist.actualExitTime || workerToPersist.exit,
+          entry: workerToPersist.entry,
+          exit: workerToPersist.exit,
+          status: workerToPersist.status || "",
+          source: "admin",
+        }, getSiteSetting(siteSettings, workerToPersist.siteId));
+        try {
+          await saveSupabaseAttendanceRecord(workerRecord);
+          await updateSupabaseWorker(workerId, { siteId: workerToPersist.siteId, status: workerToPersist.status || "" });
+        } catch (error) {
+          console.error("Connex Supabase admin worker update failed", error);
+        }
+      }, 0);
+    }
+  };
+
+  const saveSiteSettings = async (siteId, nextSettings) => {
+    const normalizedSettings = normalizeSiteSetting(siteId, nextSettings);
+    if (isSupabaseConfigured) {
+      await saveSupabaseSiteSetting(siteId, normalizedSettings);
+    }
+    setSiteSettings((currentSettings) => ({
+      ...currentSettings,
+      [siteId]: normalizedSettings,
+    }));
   };
 
   if (screen === "history") {
@@ -1790,9 +2051,12 @@ function App() {
           <AdminDashboardView
             t={t}
             workers={adminWorkers}
+            records={records}
             clock={clock}
             language={language}
             siteSettings={siteSettings}
+            useGeneratedDemoRecords={useGeneratedDemoRecords}
+            dataSyncWarning={dataSyncWarning}
             onOpenMissingWorkers={() => setAdminView("missingWorkers")}
             onOpenSite={(siteId) => {
               setActiveSiteId(siteId);
@@ -1839,6 +2103,8 @@ function App() {
             siteId={activeSiteId}
             clock={clock}
             siteSettings={siteSettings}
+            records={records}
+            useGeneratedDemoRecords={useGeneratedDemoRecords}
             onBack={() => setAdminView(workerHistoryBackView)}
           />
         ) : null}
@@ -1847,9 +2113,11 @@ function App() {
             t={t}
             language={language}
             workers={adminWorkers}
+            records={records}
             selectedMonth={selectedReportMonth}
             clock={clock}
             siteSettings={siteSettings}
+            useGeneratedDemoRecords={useGeneratedDemoRecords}
             onMonthChange={setSelectedReportMonth}
             onOpenSite={(siteId) => {
               setActiveSiteId(siteId);
@@ -1863,9 +2131,11 @@ function App() {
             language={language}
             siteId={activeSiteId}
             workers={adminWorkers}
+            records={records}
             selectedMonth={selectedReportMonth}
             clock={clock}
             siteSettings={siteSettings}
+            useGeneratedDemoRecords={useGeneratedDemoRecords}
             onMonthChange={setSelectedReportMonth}
             onOpenWorker={(workerId) => {
               setActiveWorkerId(workerId);
@@ -1879,12 +2149,7 @@ function App() {
           <AdminSiteSettingsView
             t={t}
             siteSettings={siteSettings}
-            onSaveSiteSettings={(siteId, nextSettings) =>
-              setSiteSettings((currentSettings) => ({
-                ...currentSettings,
-                [siteId]: normalizeSiteSetting(siteId, nextSettings),
-              }))
-            }
+            onSaveSiteSettings={saveSiteSettings}
           />
         ) : null}
         {adminView === "projects" ? <AdminProjectsView t={t} language={language} workers={adminWorkers} siteSettings={siteSettings} onOpenSite={(siteId) => {
@@ -2210,12 +2475,12 @@ function ReportActionIcon() {
   );
 }
 
-function AdminDashboardView({ t, workers, clock, language, siteSettings, onOpenMissingWorkers, onOpenSite }) {
+function AdminDashboardView({ t, workers, records, clock, language, siteSettings, useGeneratedDemoRecords, dataSyncWarning, onOpenMissingWorkers, onOpenSite }) {
   const todayDate = getTodayDate(clock);
   const monthId = getMonthId(clock);
   const monthLabel = getMonthLabel(monthId, language);
   const globalMetrics = getGlobalAdminMetrics(workers, clock, siteSettings);
-  const monthHours = getGlobalMonthlyHours(workers, monthId, clock, siteSettings);
+  const monthHours = getGlobalMonthlyHours(workers, monthId, clock, siteSettings, records, { useGeneratedDemoRecords });
   const siteHealth = siteDefinitions
     .map((site) => ({ site, metrics: getSiteMetrics(workers, site.id, clock, siteSettings) }))
     .sort((left, right) => right.metrics.missing - left.metrics.missing || left.metrics.attendance - right.metrics.attendance);
@@ -2226,6 +2491,7 @@ function AdminDashboardView({ t, workers, clock, language, siteSettings, onOpenM
   return (
     <section className="admin-page admin-dashboard-page">
       <PageTitle title={t.adminTitle} subtitle={t.adminSubtitle} />
+      {dataSyncWarning ? <p className="report-data-notice" role="status">{dataSyncWarning}</p> : null}
       <section className="control-center-hero">
         <div className="control-hero-main">
           <div className="control-hero-meta">
@@ -2530,16 +2796,21 @@ function AdminSiteSettingsView({ t, siteSettings, onSaveSiteSettings }) {
     return nextSettings;
   };
 
-  const handleSave = (event) => {
+  const handleSave = async (event) => {
     event.preventDefault();
     const nextSettings = getValidatedDraft();
     if (!nextSettings) {
       setSaveMessage(t.siteSettingsInvalid || t.gpsSettingsInvalid);
       return;
     }
-    onSaveSiteSettings(selectedSiteId, nextSettings);
-    setDraft(nextSettings);
-    setSaveMessage(t.settingsSaved);
+    try {
+      await onSaveSiteSettings(selectedSiteId, nextSettings);
+      setDraft(nextSettings);
+      setSaveMessage(t.settingsSaved);
+    } catch (error) {
+      console.error("Connex site settings save failed", error);
+      setSaveMessage(t.attendanceSaveFailed || translations.en.attendanceSaveFailed);
+    }
   };
 
   const handleUseCurrentLocation = async () => {
@@ -2769,10 +3040,10 @@ function AdminSiteWorkersView({ t, language, siteId, workers, clock, siteSetting
   );
 }
 
-function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettings, onBack }) {
+function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettings, records, useGeneratedDemoRecords, onBack }) {
   const site = siteDefinitions.find((item) => item.id === siteId);
   const siteSetting = getSiteSetting(siteSettings, worker?.siteId || siteId);
-  const history = getDemoWorkerHistory(worker, { includeToday: true, referenceDate: clock, siteSettings });
+  const history = getDemoWorkerHistory(worker, { includeToday: true, referenceDate: clock, siteSettings, records, useGeneratedDemoRecords });
   const fullName = getWorkerFullName(worker);
   const hourlyRate = getWorkerHourlyRate(worker);
   const paymentSummary = getWorkerPaymentSummary(history, siteSetting, hourlyRate);
@@ -2799,7 +3070,7 @@ function AdminWorkerHistoryView({ t, language, worker, siteId, clock, siteSettin
   );
 }
 
-function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSettings, onMonthChange, onOpenSite }) {
+function AdminReportsView({ t, language, workers, records, selectedMonth, clock, siteSettings, useGeneratedDemoRecords, onMonthChange, onOpenSite }) {
   const [reportMode, setReportMode] = useState("daily");
   const reportMonths = getReportMonths(clock);
   const rangeLabel = getReportRangeLabel(selectedMonth, clock);
@@ -2824,7 +3095,7 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
           <small>{t.reportControls}</small>
           <h2>{t.dateRange}</h2>
           <p>{rangeLabel}</p>
-          <p className="report-data-notice">{reportMode === "daily" ? t.dailyReportDataNotice : t.monthlyReportDataNotice}</p>
+          <p className="report-data-notice">{getReportDataNotice(t, reportMode, useGeneratedDemoRecords)}</p>
         </div>
         <div className="selected-site-placeholder">
           <small>{t.selectSite}</small>
@@ -2835,7 +3106,7 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
       <div className="report-selector-grid">
         {siteDefinitions.map((site) => {
           const metrics = getSiteMetrics(workers, site.id, clock, siteSettings);
-          const reportTotals = getSiteReportTotals(workers, site.id, selectedMonth, clock, siteSettings);
+          const reportTotals = getSiteReportTotals(workers, site.id, selectedMonth, clock, siteSettings, records, { useGeneratedDemoRecords });
           return (
             <article className="report-selector-card" key={site.id}>
               <div className="report-selector-main">
@@ -2880,17 +3151,17 @@ function AdminReportsView({ t, language, workers, selectedMonth, clock, siteSett
   );
 }
 
-function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, clock, siteSettings, onMonthChange, onOpenWorker, onBack }) {
+function AdminSiteReportView({ t, language, siteId, workers, records, selectedMonth, clock, siteSettings, useGeneratedDemoRecords, onMonthChange, onOpenWorker, onBack }) {
   const [reportMode, setReportMode] = useState("daily");
   const reportMonths = getReportMonths(clock);
   const site = siteDefinitions.find((item) => item.id === siteId);
   const todayDate = getTodayDate(clock);
   const siteWorkers = workers.filter((worker) => worker.siteId === siteId && isSameDate(worker.date || todayDate, todayDate));
   const siteSetting = getSiteSetting(siteSettings, siteId);
-  const reportTotals = getSiteReportTotals(workers, siteId, selectedMonth, clock, siteSettings);
+  const reportTotals = getSiteReportTotals(workers, siteId, selectedMonth, clock, siteSettings, records, { useGeneratedDemoRecords });
   const dailyRows = getDailyReportDates(selectedMonth, clock).flatMap((date) =>
     siteWorkers.map((worker) => {
-      const record = getReportRowsForWorker(worker, selectedMonth, clock, siteSettings).find((item) => isSameDate(item.date, date));
+      const record = getReportRowsForWorker(worker, selectedMonth, clock, siteSettings, records, { useGeneratedDemoRecords }).find((item) => isSameDate(item.date, date));
       return { worker, record: record || { date, entry: "", exit: "", status: "" } };
     }),
   );
@@ -2915,7 +3186,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
         <div>
           <small>{t.selectedRange}</small>
           <strong>{getReportRangeLabel(selectedMonth, clock)}</strong>
-          <p className="report-data-notice">{reportMode === "daily" ? t.dailyReportDataNotice : t.monthlyReportDataNotice}</p>
+          <p className="report-data-notice">{getReportDataNotice(t, reportMode, useGeneratedDemoRecords)}</p>
         </div>
       </section>
       <section className="report-summary-card">
@@ -2950,7 +3221,7 @@ function AdminSiteReportView({ t, language, siteId, workers, selectedMonth, cloc
             </thead>
             <tbody>
               {siteWorkers.map((worker) => {
-                const summary = getWorkerMonthlySummary(worker, t, language, selectedMonth, clock, siteSettings);
+                const summary = getWorkerMonthlySummary(worker, t, language, selectedMonth, clock, siteSettings, records, { useGeneratedDemoRecords });
                 return (
                   <tr className={worker.status ? "status-alert-row" : ""} key={worker.id} onClick={() => onOpenWorker(worker.id)}>
                     <td>{getWorkerFullName(worker)}</td><td><NumericToken className="passport-token">{worker.passport}</NumericToken></td><td>{getCountryLabel(worker.country, language)}</td><td><NumericToken>{summary.daysWorked}</NumericToken></td><td><NumericToken>{summary.missingDays}</NumericToken></td><td><NumericToken>{summary.totalHours}</NumericToken></td>
@@ -2989,12 +3260,18 @@ function AdminProjectsView({ t, language, workers, siteSettings, onOpenSite }) {
   );
 }
 
-function getDemoWorkerHistory(worker, { includeToday = false, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap() } = {}) {
+function getDemoWorkerHistory(worker, { includeToday = false, referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], useGeneratedDemoRecords = true } = {}) {
   const seed = worker?.id || 1;
   const todayDate = getTodayDate(referenceDate);
   const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
   const dates = getCurrentMonthDates(referenceDate).filter((date) => includeToday || !isSameDate(date, todayDate));
   return dates.map((date, index) => {
+    const sharedRecord = getRecordForWorkerDate(records, worker?.id, date);
+    if (sharedRecord) {
+      const recordSiteSetting = getSiteSetting(siteSettings, sharedRecord.siteId || worker?.siteId);
+      return applyAttendanceRules({ ...sharedRecord, siteId: sharedRecord.siteId || worker?.siteId }, recordSiteSetting);
+    }
+
     if (isSameDate(date, todayDate) && worker) {
       return applyAttendanceRules({
         date,
@@ -3008,6 +3285,18 @@ function getDemoWorkerHistory(worker, { includeToday = false, referenceDate = ne
     }
     if ((seed + index) % 7 === 0) return { date, entry: "", exit: "", status: "אי הגעה" };
     if ((seed + index) % 11 === 0) return { date, entry: "", exit: "", status: "מחלה" };
+    if (!useGeneratedDemoRecords) {
+      return applyAttendanceRules({
+        date,
+        siteId: worker?.siteId,
+        actualEntryTime: "",
+        actualExitTime: "",
+        entry: "",
+        exit: "",
+        status: "",
+        source: "empty",
+      }, siteSetting);
+    }
     const times = getDeterministicAttendance(seed, index);
     return applyAttendanceRules({
       date,
@@ -3021,18 +3310,18 @@ function getDemoWorkerHistory(worker, { includeToday = false, referenceDate = ne
   });
 }
 
-function getMonthlyHoursForWorker(worker, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+function getMonthlyHoursForWorker(worker, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], options = {}) {
   const siteSetting = getSiteSetting(siteSettings, worker?.siteId);
-  const minutes = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0);
+  const minutes = getReportRowsForWorker(worker, monthId, referenceDate, siteSettings, records, options).reduce((sum, record) => sum + (getRecordMinutes(record, siteSetting) || 0), 0);
   return formatMinutes(minutes);
 }
 
-function getSiteMonthlyHours(workers, siteId, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap()) {
+function getSiteMonthlyHours(workers, siteId, monthId = getDefaultReportMonthId(), referenceDate = new Date(), siteSettings = getDefaultSiteSettingsMap(), records = [], options = {}) {
   const siteSetting = getSiteSetting(siteSettings, siteId);
   const minutes = workers
     .filter((worker) => worker.siteId === siteId)
     .reduce((sum, worker) => {
-      return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
+      return sum + getReportRowsForWorker(worker, monthId, referenceDate, siteSettings, records, options).reduce((recordSum, record) => recordSum + (getRecordMinutes(record, siteSetting) || 0), 0);
     }, 0);
   return formatMinutes(minutes);
 }

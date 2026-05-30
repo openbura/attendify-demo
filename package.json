@@ -17,6 +17,7 @@
   "dependencies": {
     "@fontsource/heebo": "^5.2.8",
     "@remotion/cli": "^4.0.457",
+    "@supabase/supabase-js": "^2.106.2",
     "@vitejs/plugin-react": "^5.1.1",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
